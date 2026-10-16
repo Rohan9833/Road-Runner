@@ -7,7 +7,7 @@ const SPRITE_URL = "/player.png";
 const FRAME_COUNT = 8;
 const SOURCE_FRAME_WIDTH = 105;
 const SOURCE_FRAME_HEIGHT = 150;
-const SOURCE_RUN_ROW_Y = 280;
+const SOURCE_RUN_ROW_Y = 100;
 
 // This is the one and only display size for the runner, for every animation frame.
 const DRAW_WIDTH = 56;
