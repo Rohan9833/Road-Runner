@@ -2,25 +2,32 @@ import { GAME } from "./constants.js";
 
 const SPRITE_URL = "/player.png";
 
-// Use the same-sized grid cell for every pose. Trimming each pose independently
-// made the visible character grow/shrink because every crop had a different ratio.
-const FRAME_COUNT = 8;
-const SOURCE_FRAME_WIDTH = 105;
-const SOURCE_FRAME_HEIGHT = 150;
-const SOURCE_RUN_ROW_Y = 100;
+// Exact bounds of the eight poses in the top row of the 840 x 859 sprite sheet.
+// Cropping a full 105px cell included fragments of nearby poses.
+const RUN_FRAME_BOUNDS = [
+  [25, 300, 104, 422],
+  [123, 300, 171, 422],
+  [222, 300, 319, 422],
+  [331, 300, 421, 422],
+  [432, 300, 497, 422],
+  [535, 300, 624, 422],
+  [635, 300, 739, 422],
+  [744, 300, 839, 422],
+];
 
-// This is the one and only display size for the runner, for every animation frame.
-const DRAW_WIDTH = 56;
-const DRAW_HEIGHT = 80;
 const FRAME_DURATION = 0.095;
+// All frames use one fixed canvas and one fixed sprite scale.
+const FRAME_WIDTH = 64;
+const FRAME_HEIGHT = 70;
+const SPRITE_SCALE = 0.50;
 
 let spriteSheet;
 let spriteLoadStarted = false;
 let processedFrames = [];
 
 function removeConnectedCheckerboard(canvas) {
-  // The checkerboard is part of the PNG pixels, not transparent alpha.
-  // Remove only near-neutral light pixels connected to the cell's outer edge.
+  // The checkerboard is baked into the PNG. Remove only light background pixels
+  // connected to the crop edge, preserving enclosed highlights in the character.
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const { data, width, height } = imageData;
@@ -34,8 +41,7 @@ function removeConnectedCheckerboard(canvas) {
     const r = data[offset];
     const g = data[offset + 1];
     const b = data[offset + 2];
-    const spread = Math.max(r, g, b) - Math.min(r, g, b);
-    return spread < 16 && r > 175 && g > 175 && b > 175;
+    return Math.max(r, g, b) - Math.min(r, g, b) < 16 && r > 175 && g > 175 && b > 175;
   };
 
   const enqueue = (x, y) => {
@@ -65,47 +71,48 @@ function removeConnectedCheckerboard(canvas) {
     enqueue(x, y - 1);
     enqueue(x, y + 1);
   }
-
   ctx.putImageData(imageData, 0, 0);
 }
 
-function prepareFrame(image, frameIndex) {
-  // Crop the same 105 x 150 source cell for every pose. Do not trim or rescale
-  // individual characters: the original cell layout provides a consistent scale.
+function prepareFrame(image, bounds) {
+  const [left, top, right, bottom] = bounds;
+  const cropWidth = right - left;
+  const cropHeight = bottom - top;
+
+  // Crop only one measured pose, preventing neighboring characters from leaking in.
+  const crop = document.createElement("canvas");
+  crop.width = cropWidth;
+  crop.height = cropHeight;
+  const cropCtx = crop.getContext("2d", { willReadFrequently: true });
+  cropCtx.imageSmoothingEnabled = false;
+  cropCtx.drawImage(image, left, top, cropWidth, cropHeight, 0, 0, cropWidth, cropHeight);
+  removeConnectedCheckerboard(crop);
+
+  // Normalize the pose onto a common canvas. SPRITE_SCALE never changes between
+  // frames, so a wide running pose cannot suddenly grow larger than a narrow one.
   const frame = document.createElement("canvas");
-  frame.width = SOURCE_FRAME_WIDTH;
-  frame.height = SOURCE_FRAME_HEIGHT;
-
-  const frameCtx = frame.getContext("2d", { willReadFrequently: true });
+  frame.width = FRAME_WIDTH;
+  frame.height = FRAME_HEIGHT;
+  const frameCtx = frame.getContext("2d");
   frameCtx.imageSmoothingEnabled = false;
-  frameCtx.drawImage(
-    image,
-    frameIndex * SOURCE_FRAME_WIDTH,
-    SOURCE_RUN_ROW_Y,
-    SOURCE_FRAME_WIDTH,
-    SOURCE_FRAME_HEIGHT,
-    0,
-    0,
-    SOURCE_FRAME_WIDTH,
-    SOURCE_FRAME_HEIGHT,
-  );
 
-  removeConnectedCheckerboard(frame);
+  const drawWidth = cropWidth * SPRITE_SCALE;
+  const drawHeight = cropHeight * SPRITE_SCALE;
+  const drawX = (FRAME_WIDTH - drawWidth) / 2;
+  const drawY = FRAME_HEIGHT - drawHeight;
+  frameCtx.drawImage(crop, 0, 0, cropWidth, cropHeight, drawX, drawY, drawWidth, drawHeight);
   return frame;
 }
 
 function getSpriteSheet() {
   if (spriteLoadStarted) return spriteSheet;
   spriteLoadStarted = true;
-
   if (typeof Image === "undefined") return undefined;
 
   spriteSheet = new Image();
   spriteSheet.onload = () => {
-    // Prepare every frame once after loading, not on every game-loop tick.
-    processedFrames = Array.from({ length: FRAME_COUNT }, (_, index) =>
-      prepareFrame(spriteSheet, index),
-    );
+    // Prepare frames once on load; rendering only selects a cached frame.
+    processedFrames = RUN_FRAME_BOUNDS.map((bounds) => prepareFrame(spriteSheet, bounds));
   };
   spriteSheet.onerror = () => {
     console.error("Could not load /player.png. Put it in frontend/public/player.png.");
@@ -116,7 +123,6 @@ function getSpriteSheet() {
 
 export function createPlayer() {
   getSpriteSheet();
-
   return {
     x: GAME.playerX,
     y: GAME.groundY - GAME.playerHeight,
@@ -129,14 +135,13 @@ export function createPlayer() {
 }
 
 export function updatePlayer(player, dt, running) {
-  // Keep animation timing attached to the player so it pauses with the game.
+  // Keep the animation clock paused whenever the game is paused.
   if (running) player.runTime += dt;
 
-  // Jump physics is independent of the sprite image.
+  // Physics controls vertical movement independently of the sprite artwork.
   if (!player.grounded) {
     player.vy += GAME.gravity * dt;
     player.y += player.vy * dt;
-
     const floor = GAME.groundY - player.height;
     if (player.y >= floor) {
       player.y = floor;
@@ -156,38 +161,28 @@ export function jumpPlayer(player) {
 export function drawPlayer(ctx, player, _elapsed, jumping) {
   getSpriteSheet();
 
-  // Modulo wraps the index from the last frame back to the first without a gap.
-  const frameIndex = Math.floor(player.runTime / FRAME_DURATION) % FRAME_COUNT;
+  // Loop directly from the final frame back to the first with no blank frame.
+  const frameIndex = Math.floor(player.runTime / FRAME_DURATION) % RUN_FRAME_BOUNDS.length;
   const frame = processedFrames[frameIndex];
 
   ctx.save();
 
-  // The shadow remains on the road while the runner moves upward during a jump.
+  // Shadow remains on the road while the player jumps.
   ctx.fillStyle = "#2c4638";
   ctx.globalAlpha = jumping ? 0.10 : 0.18;
   ctx.beginPath();
-  ctx.ellipse(
-    player.x + player.width / 2,
-    GAME.groundY + 2,
-    jumping ? 10 : 14,
-    3,
-    0,
-    0,
-    Math.PI * 2,
-  );
+  ctx.ellipse(player.x + player.width / 2, GAME.groundY + 2, jumping ? 10 : 14, 3, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = 1;
 
   if (frame) {
-    // IMPORTANT: every frame is drawn at exactly the same width and height.
-    // The bottom edge follows the physics player's feet, so jumps remain aligned.
-    const drawX = Math.round(player.x + player.width / 2 - DRAW_WIDTH / 2);
-    const drawY = Math.round(player.y + player.height - DRAW_HEIGHT + 5);
-
+    // Every frame uses the exact same destination size and bottom anchor.
+    const drawX = Math.round(player.x + player.width / 2 - FRAME_WIDTH / 2);
+    const drawY = Math.round(player.y + player.height - FRAME_HEIGHT + 5);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(frame, drawX, drawY, DRAW_WIDTH, DRAW_HEIGHT);
+    ctx.drawImage(frame, drawX, drawY, FRAME_WIDTH, FRAME_HEIGHT);
   } else if (!spriteSheet?.complete || spriteSheet.naturalWidth === 0) {
-    // Temporary fallback while the PNG loads or if the public asset is missing.
+    // Fallback shown only while the PNG loads or when its path is missing.
     ctx.fillStyle = "#df6846";
     ctx.fillRect(player.x + 4, player.y + 7, player.width - 8, player.height - 7);
     ctx.fillStyle = "#2d4939";
