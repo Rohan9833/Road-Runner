@@ -1,0 +1,49 @@
+.play-page { min-height:100vh; padding:0 28px 25px; }
+.play-header { width:min(1120px,100%); height:76px; margin:auto; display:grid; grid-template-columns:1fr auto 1fr; align-items:center; border-bottom:1px solid var(--line); }
+.back-link { display:inline-flex; align-items:center; gap:8px; width:fit-content; color:#707466; font-size:12px; font-weight:600; }
+.play-header .wordmark { justify-self:center; }
+.play-header-tag { justify-self:end; color:#8c8978; font-family:var(--mono); font-size:9px; letter-spacing:.06em; }
+.play-intro { text-align:center; padding:34px 0 24px; }
+.play-intro .eyebrow { justify-content:center; }
+.play-intro h1 { font-size:clamp(34px,5vw,52px); letter-spacing:-.07em; margin:8px 0 7px; line-height:1.1; }
+.play-intro p { color:#7a7b6d; font-size:13px; margin:0; }
+.game-shell { width:min(1120px,100%); margin:0 auto; border:1px solid #d8cdb5; background:#fffaf0; box-shadow:7px 7px 0 #e8deca; }
+.game-topbar { min-height:68px; display:flex; align-items:center; justify-content:space-between; padding:12px 22px; border-bottom:1px solid #e4dac7; }
+.game-status { display:flex; align-items:center; gap:9px; font-family:var(--mono); color:#77796b; font-size:10px; letter-spacing:.08em; }
+.game-stats { display:flex; gap:28px; }
+.stat { display:grid; gap:4px; }
+.stat span { color:#918c79; font-family:var(--mono); font-size:8px; letter-spacing:.1em; }
+.stat strong { color:var(--green); font-family:var(--mono); font-size:18px; line-height:1; letter-spacing:.01em; font-weight:500; font-variant-numeric:tabular-nums; }
+.canvas-wrap { position:relative; background:#f8f0db; overflow:hidden; aspect-ratio:12 / 5; min-height:245px; max-height:500px; }
+.game-canvas { display:block; width:100%; height:100%; min-height:245px; object-fit:fill; touch-action:manipulation; image-rendering:pixelated; }
+.game-overlay { position:absolute; inset:0; display:grid; place-items:center; background:rgba(248,240,219,.20); padding:15px; }
+.overlay-card { width:min(390px,100%); padding:27px 28px 24px; text-align:center; background:rgba(255,250,240,.96); border:1px solid #dcd0b9; box-shadow:5px 5px 0 rgba(52,84,64,.13); }
+.overlay-kicker { font-family:var(--mono); font-size:9px; letter-spacing:.13em; color:var(--orange-dark); }
+.overlay-card h2 { margin:10px 0 9px; font-size:clamp(21px,3.2vw,29px); letter-spacing:-.06em; line-height:1.12; }
+.overlay-card p { max-width:290px; margin:0 auto 19px; color:#737568; font-size:12px; line-height:1.65; }
+.overlay-button { margin:0 auto; min-width:176px; }
+.overlay-hint { display:block; margin-top:17px; color:#96917d; font-family:var(--mono); font-size:8px; letter-spacing:.07em; }
+.game-controls { display:flex; align-items:center; justify-content:space-between; padding:14px 22px; border-top:1px solid #e4dac7; }
+.controls-copy { display:flex; align-items:center; gap:14px; color:#77796b; font-size:11px; }
+.controls-label { color:#99917d; font-family:var(--mono); font-size:8px; letter-spacing:.11em; }
+kbd { display:inline-flex; align-items:center; justify-content:center; min-width:25px; padding:3px 5px; border:1px solid #d9ceb9; border-bottom-width:2px; background:#f8f0df; color:var(--green); border-radius:2px; font-family:var(--mono); font-size:9px; }
+.control-divider { padding-inline:5px; color:#c1b49d; }
+.control-buttons { display:flex; gap:7px; }
+.icon-button { display:grid; place-items:center; width:34px; height:34px; color:var(--green); border:1px solid #dbd0bc; background:transparent; cursor:pointer; transition:background .15s ease; }
+.icon-button:hover { background:#f1e7d1; }
+.mobile-hint { display:none; text-align:center; color:#8a8876; font-family:var(--mono); letter-spacing:.07em; font-size:9px; padding:16px; }
+.mobile-hint span { display:inline-flex; justify-content:center; align-items:center; gap:8px; }
+.play-footer { width:min(1120px,100%); display:flex; justify-content:space-between; gap:15px; margin:20px auto 0; color:#96917f; font-family:var(--mono); font-size:8px; letter-spacing:.09em; }
+.not-found { width:min(720px,calc(100% - 40px)); min-height:100vh; margin:auto; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:22px; }
+.not-found h1 { font-size:clamp(47px,8vw,78px); line-height:.98; letter-spacing:-.075em; margin:0; }
+@media (max-width:650px) {
+  .play-page { padding:0 12px 20px; } .play-header { height:64px; grid-template-columns:1fr auto; } .play-header .wordmark { display:none; } .play-header-tag { font-size:8px; }
+  .play-intro { padding:27px 0 20px; } .game-topbar { padding:12px; min-height:61px; align-items:flex-start; gap:10px; }
+  .game-status { font-size:8px; align-self:center; letter-spacing:.04em; } .game-stats { gap:12px; } .stat strong { font-size:15px; } .stat span { font-size:7px; }
+  .canvas-wrap { aspect-ratio:12 / 6.2; min-height:220px; } .game-canvas { min-height:220px; }
+  .overlay-card { padding:18px 15px; } .overlay-card p { margin-bottom:13px; font-size:11px; } .overlay-hint { margin-top:12px; }
+  .game-controls { padding:11px 12px; } .controls-copy { gap:7px; flex-direction:column; align-items:flex-start; font-size:10px; } .controls-label { font-size:7px; }
+  .control-buttons { gap:5px; } .icon-button { width:31px; height:31px; } .mobile-hint { display:block; }
+  .play-footer { flex-direction:column; align-items:center; text-align:center; font-size:7px; }
+}
+@media (max-width:390px) { .controls-copy { font-size:9px; } .controls-label { display:none; } .game-stats { gap:8px; } .game-status { max-width:90px; line-height:1.45; } }
