@@ -38,7 +38,7 @@ export function createGame(canvas, callbacks = {}) {
     else if (state === "paused") { setState("playing"); previousTime = 0; }
   }
   function onKeyDown(event) {
-    if (event.repeat && ["Space", "ArrowUp"].includes(event.code)) return;
+    if (event.repeat && ["Space", "ArrowUp", "KeyW"].includes(event.code)) return;
     if (["Space", "ArrowUp", "KeyW"].includes(event.code)) { event.preventDefault(); jump(); }
     else if (event.code === "Escape" || event.code === "KeyP") { event.preventDefault(); togglePause(); }
     else if (event.code === "KeyR") { event.preventDefault(); restart(); }
