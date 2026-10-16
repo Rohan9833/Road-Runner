@@ -1,12 +1,26 @@
 import { GAME } from "./constants.js";
 
+// Vite serves files inside frontend/public from the site root, so this loads
+// frontend/public/player.png as /player.png.
 const SPRITE_URL = "/player.png";
+
+// The supplied sprite sheet is 840px wide: eight 105px animation cells.
 const FRAME_COUNT = 8;
 const FRAME_WIDTH = 105;
-const FRAME_HEIGHT = 150;
-// The supplied sheet has two horizontal rows of eight running poses.
-// Crop around the visible character art instead of including the large empty margins.
-const ROW_TOPS = [280, 420];
+
+// The runner poses occupy the middle of each cell; the rest is transparent padding.
+// Keep the crop inside each cell so a neighboring pose cannot appear beside the runner.
+const SOURCE_X_INSET = 5;
+const SOURCE_WIDTH = 95;
+const SOURCE_Y = 285;
+const SOURCE_HEIGHT = 145;
+
+// Draw the character larger than its collision box. This is only visual sizing;
+// the actual collision dimensions remain controlled by constants.js.
+const DRAW_WIDTH = 62;
+const DRAW_HEIGHT = 78;
+const DRAW_X_OFFSET = 10;
+const DRAW_Y_OFFSET = 22;
 
 let spriteSheet;
 let spriteLoadStarted = false;
@@ -14,19 +28,24 @@ let spriteLoadStarted = false;
 function getSpriteSheet() {
   if (spriteLoadStarted) return spriteSheet;
   spriteLoadStarted = true;
+
   if (typeof Image === "undefined") return undefined;
 
   spriteSheet = new Image();
   spriteSheet.onload = () => {};
   spriteSheet.onerror = () => {
-    console.error("Could not load /player.png. Put the sprite sheet in frontend/public/player.png.");
+    console.error(
+      "Road Runner could not load /player.png. Make sure it is saved in frontend/public/player.png.",
+    );
   };
   spriteSheet.src = SPRITE_URL;
   return spriteSheet;
 }
 
 export function createPlayer() {
+  // Start loading the sprite as soon as the game creates its player.
   getSpriteSheet();
+
   return {
     x: GAME.playerX,
     y: GAME.groundY - GAME.playerHeight,
@@ -39,11 +58,14 @@ export function createPlayer() {
 }
 
 export function updatePlayer(player, dt, running) {
+  // Track animation time only while the game is actively running.
   if (running) player.runTime += dt;
 
+  // Simple vertical physics: gravity pulls the player back to the ground after a jump.
   if (!player.grounded) {
     player.vy += GAME.gravity * dt;
     player.y += player.vy * dt;
+
     const floor = GAME.groundY - player.height;
     if (player.y >= floor) {
       player.y = floor;
@@ -54,7 +76,9 @@ export function updatePlayer(player, dt, running) {
 }
 
 export function jumpPlayer(player) {
+  // Prevent a second jump while the character is already in the air.
   if (!player.grounded) return false;
+
   player.vy = GAME.jumpVelocity;
   player.grounded = false;
   return true;
@@ -62,21 +86,21 @@ export function jumpPlayer(player) {
 
 export function drawPlayer(ctx, player, elapsed, jumping) {
   const sheet = getSpriteSheet();
+
+  // Each frame shows a different running pose. Use one fixed pose while jumping.
   const frame = jumping ? 5 : Math.floor(elapsed * 11) % FRAME_COUNT;
-  const row = 0;
-  const sourceX = frame * FRAME_WIDTH;
-  const sourceY = ROW_TOPS[row];
+  const sourceX = frame * FRAME_WIDTH + SOURCE_X_INSET;
 
   ctx.save();
 
-  // A soft ground shadow keeps the runner grounded without drawing a replacement character.
+  // Draw a small shadow at ground level; it gets lighter while the runner jumps.
   ctx.fillStyle = "#2c4638";
   ctx.globalAlpha = jumping ? 0.10 : 0.18;
   ctx.beginPath();
   ctx.ellipse(
-    player.x + player.width * 0.52,
+    player.x + player.width / 2,
     GAME.groundY + 2,
-    player.width * (jumping ? 0.30 : 0.43),
+    jumping ? 10 : 15,
     3,
     0,
     0,
@@ -86,21 +110,22 @@ export function drawPlayer(ctx, player, elapsed, jumping) {
   ctx.globalAlpha = 1;
 
   if (sheet?.complete && sheet.naturalWidth > 0) {
-    // Each pose occupies one 105px-wide cell. Crop to the artwork band in the source row.
+    // Crop a single pose from the sheet, then draw it at a readable game size.
+    // The destination rectangle is intentionally wider/taller than the hitbox.
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(
       sheet,
       sourceX,
-      sourceY,
-      FRAME_WIDTH,
-      FRAME_HEIGHT,
-      Math.round(player.x - 7),
-      Math.round(player.y - 14),
-      player.width + 15,
-      player.height + 18,
+      SOURCE_Y,
+      SOURCE_WIDTH,
+      SOURCE_HEIGHT,
+      Math.round(player.x - DRAW_X_OFFSET),
+      Math.round(player.y - DRAW_Y_OFFSET),
+      DRAW_WIDTH,
+      DRAW_HEIGHT,
     );
   } else {
-    // Keep the game playable while the image loads or if the asset path is incorrect.
+    // Temporary fallback while the PNG loads, or if the public asset is missing.
     ctx.fillStyle = "#df6846";
     ctx.fillRect(player.x + 4, player.y + 7, player.width - 8, player.height - 7);
     ctx.fillStyle = "#2d4939";
