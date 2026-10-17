@@ -22,7 +22,7 @@ const RUN_FRAMES = [
 ];
 
 // Ping-pong animation plays forward and backward for a softer loop transition.
-const ANIMATION_ORDER = [0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1];
+const ANIMATION_ORDER = [0, 1, 2, 3, 4, 5, 6, 7,];
 const FRAME_DURATION = 0.095;
 
 // The final drawing box is the same for every frame. Each pose is fitted inside
