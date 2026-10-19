@@ -42,12 +42,12 @@ export function createGame(canvas, callbacks = {}) {
   function start() {
     if (destroyed || state === "playing") return;
     if (state === "paused") { setState("playing"); previousTime = 0; scheduleFrame(); return; }
-    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true }); scheduleFrame(); scheduleFrame();
+    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true }); scheduleFrame();
   }
 
   function restart() {
     if (destroyed) return;
-    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true });
+    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true }); scheduleFrame();
   }
 
   function jump() {
