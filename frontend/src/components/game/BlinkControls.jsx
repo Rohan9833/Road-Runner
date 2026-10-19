@@ -2,12 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-const CLOSED_THRESHOLD = 0.24;
-const OPEN_THRESHOLD = 0.15;
-const FAST_BLINK_DELTA = 0.10;
-const FAST_BLINK_MIN_PEAK = 0.22;
-const FAST_BLINK_PREVIOUS_MAX = 0.18;
-const JUMP_DEBOUNCE_MS = 220;
+// Use a closed -> reopened sequence instead of triggering on one noisy frame.
+const CLOSED_THRESHOLD = 0.34;
+const OPEN_THRESHOLD = 0.20;
+const JUMP_DEBOUNCE_MS = 450;
+const MIN_CLOSED_MS = 35;
+const MAX_BLINK_MS = 700;
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -19,10 +19,11 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const streamRef = useRef(null);
   const onBlinkRef = useRef(onBlink);
   const lastVideoTimeRef = useRef(-1);
-  const previousLeftRef = useRef(0);
-  const previousRightRef = useRef(0);
+  const smoothedLeftRef = useRef(0);
+  const smoothedRightRef = useRef(0);
   const lastJumpTimeRef = useRef(0);
-  const readyToBlinkRef = useRef(true);
+  const closedSinceRef = useRef(0);
+  const wasClosedRef = useRef(false);
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -85,11 +86,12 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         await video.play();
         if (cancelled) return;
 
-        previousLeftRef.current = 0;
-        previousRightRef.current = 0;
+        smoothedLeftRef.current = 0;
+        smoothedRightRef.current = 0;
         lastVideoTimeRef.current = -1;
         lastJumpTimeRef.current = 0;
-        readyToBlinkRef.current = true;
+        closedSinceRef.current = 0;
+        wasClosedRef.current = false;
         setStatus("ready");
 
         const detect = () => {
@@ -108,43 +110,49 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             const categories = result.faceBlendshapes?.[0]?.categories ?? [];
             const left = categories.find((item) => item.categoryName === "eyeBlinkLeft")?.score ?? 0;
             const right = categories.find((item) => item.categoryName === "eyeBlinkRight")?.score ?? 0;
-            const previousLeft = previousLeftRef.current;
-            const previousRight = previousRightRef.current;
+            // Smooth frame-to-frame noise, but keep enough responsiveness for light blinks.
+            const smoothedLeft = smoothedLeftRef.current * 0.35 + left * 0.65;
+            const smoothedRight = smoothedRightRef.current * 0.35 + right * 0.65;
+            smoothedLeftRef.current = smoothedLeft;
+            smoothedRightRef.current = smoothedRight;
 
-            const bothOpen = left < OPEN_THRESHOLD && right < OPEN_THRESHOLD;
-            if (bothOpen) {
-              readyToBlinkRef.current = true;
-            }
-
-            // Accept subtle blinks too: the two eyes do not always receive
-            // identical scores, especially with glasses, lighting, or camera angle.
+            const now = performance.now();
             const bothClosed =
-              left > CLOSED_THRESHOLD && right > CLOSED_THRESHOLD;
-            const softBlink =
-              (left > 0.32 && right > 0.14) ||
-              (right > 0.32 && left > 0.14);
-            const fastBlink =
-              left - previousLeft >= FAST_BLINK_DELTA &&
-              right - previousRight >= FAST_BLINK_DELTA &&
-              previousLeft < FAST_BLINK_PREVIOUS_MAX &&
-              previousRight < FAST_BLINK_PREVIOUS_MAX &&
-              left > FAST_BLINK_MIN_PEAK &&
-              right > FAST_BLINK_MIN_PEAK;
+              smoothedLeft > CLOSED_THRESHOLD &&
+              smoothedRight > CLOSED_THRESHOLD;
+            const bothOpen =
+              smoothedLeft < OPEN_THRESHOLD &&
+              smoothedRight < OPEN_THRESHOLD;
 
-            if (readyToBlinkRef.current && (bothClosed || softBlink || fastBlink)) {
-              readyToBlinkRef.current = false;
-              const now = performance.now();
-              if (now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS) {
+            // Arm only after seeing open eyes; a blink is counted on reopening,
+            // not merely because a noisy score briefly spikes.
+            if (!wasClosedRef.current && bothClosed) {
+              wasClosedRef.current = true;
+              closedSinceRef.current = now;
+            } else if (wasClosedRef.current && bothOpen) {
+              const closedFor = now - closedSinceRef.current;
+              wasClosedRef.current = false;
+              closedSinceRef.current = 0;
+
+              if (
+                closedFor >= MIN_CLOSED_MS &&
+                closedFor <= MAX_BLINK_MS &&
+                now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS
+              ) {
                 lastJumpTimeRef.current = now;
                 setBlinkCount((count) => count + 1);
                 setBlinkPulse(true);
                 window.setTimeout(() => setBlinkPulse(false), 650);
                 onBlinkRef.current?.();
               }
+            } else if (
+              wasClosedRef.current &&
+              now - closedSinceRef.current > MAX_BLINK_MS
+            ) {
+              // Long eye closure (e.g. looking away) is not treated as a blink.
+              wasClosedRef.current = false;
+              closedSinceRef.current = 0;
             }
-
-            previousLeftRef.current = left;
-            previousRightRef.current = right;
           }
 
           frameRef.current = requestAnimationFrame(detect);
