@@ -21,20 +21,40 @@ let lastJumpTime = 0;
 let closedSince = 0;
 let wasClosed = false;
 let initializing = false;
+let workerStage = "worker module loaded";
+
+console.info("[BlinkWorker] Module loaded", {
+  href: self.location?.href,
+  userAgent: self.navigator?.userAgent,
+  wasmUrl: WASM_URL,
+  modelUrl: MODEL_URL,
+});
 
 async function initialize() {
-  if (initializing || detector) return;
+  if (initializing || detector) {
+    console.warn("[BlinkWorker] Ignoring duplicate INIT", { initializing, detectorReady: Boolean(detector) });
+    return;
+  }
   initializing = true;
+  workerStage = "fetch model";
+  console.info("[BlinkWorker] Initialization started");
   try {
     // Fetch the model as bytes in the worker and pass the buffer to MediaPipe.
     // This avoids a second model-path fetch inside the WASM runtime.
+    console.info("[BlinkWorker] Fetching model", MODEL_URL);
     const modelResponse = await fetch(MODEL_URL);
+    console.info("[BlinkWorker] Model response", { status: modelResponse.status, ok: modelResponse.ok, contentType: modelResponse.headers.get("content-type") });
     if (!modelResponse.ok) {
       throw new Error(`Could not download face model (HTTP ${modelResponse.status}).`);
     }
     const modelBuffer = new Uint8Array(await modelResponse.arrayBuffer());
-
+    console.info("[BlinkWorker] Model downloaded", { bytes: modelBuffer.byteLength });
+    workerStage = "resolve WASM runtime";
+    console.info("[BlinkWorker] Resolving MediaPipe WASM", WASM_URL);
     const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+    console.info("[BlinkWorker] WASM runtime resolved", vision);
+    workerStage = "create FaceLandmarker";
+    console.info("[BlinkWorker] Creating FaceLandmarker", { delegate: "CPU", runningMode: "VIDEO" });
     detector = await FaceLandmarker.createFromOptions(vision, {
       baseOptions: { modelAssetBuffer: modelBuffer, delegate: "CPU" },
       runningMode: "VIDEO",
@@ -42,11 +62,23 @@ async function initialize() {
       outputFaceBlendshapes: true,
     });
 
+    workerStage = "ready";
+    console.info("[BlinkWorker] FaceLandmarker ready");
     self.postMessage({ type: "READY" });
   } catch (error) {
+    console.error("[BlinkWorker] Initialization failed", {
+      stage: workerStage,
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      error,
+    });
     self.postMessage({
       type: "ERROR",
+      stage: workerStage,
+      name: error?.name || "Error",
       message: error?.message || "Could not initialize MediaPipe in the worker.",
+      stack: error?.stack || "",
     });
   } finally {
     initializing = false;
@@ -55,6 +87,7 @@ async function initialize() {
 
 self.onmessage = async (event) => {
   const data = event.data;
+  if (data?.type !== "FRAME") console.info("[BlinkWorker] Message received", data?.type);
 
   if (data?.type === "INIT") {
     await initialize();
@@ -65,6 +98,10 @@ self.onmessage = async (event) => {
     const bitmap = data.bitmap;
     try {
       if (!detector) return;
+      if (!self.__loggedFirstFrame) {
+        self.__loggedFirstFrame = true;
+        console.info("[BlinkWorker] First frame received", { width: bitmap?.width, height: bitmap?.height, timestamp: data.timestamp });
+      }
       const result = detector.detectForVideo(bitmap, data.timestamp);
       const categories = result.faceBlendshapes?.[0]?.categories ?? [];
       const left = categories.find((item) => item.categoryName === "eyeBlinkLeft")?.score ?? 0;
@@ -109,7 +146,8 @@ self.onmessage = async (event) => {
 
       if (blink) self.postMessage({ type: "BLINK_DETECTED" });
     } catch (error) {
-      self.postMessage({ type: "FRAME_ERROR", message: error?.message || "Frame processing failed." });
+      console.error("[BlinkWorker] Frame inference failed", { name: error?.name, message: error?.message, stack: error?.stack, error });
+      self.postMessage({ type: "FRAME_ERROR", message: error?.message || "Frame processing failed.", stack: error?.stack || "" });
     } finally {
       bitmap?.close?.();
       self.postMessage({ type: "FRAME_DONE" });
