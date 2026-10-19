@@ -98,16 +98,16 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = new URL("./blinkDetection.worker.js", import.meta.url);
+        const workerUrl = "/blinkDetection.worker.js";
         console.info("[BlinkControls] Creating classic MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
-          wasmUrl: "/node_modules/@mediapipe/tasks-vision/wasm",
+          wasmUrl: "/mediapipe/wasm",
           detectionIntervalMs: DETECTION_INTERVAL_MS,
         });
-        const worker = new Worker(workerUrl, { type: "module" });
+        const worker = new Worker(workerUrl);
         workerRef.current = worker;
-        console.info("[BlinkControls] Module worker created", { type: "module" });
+        console.info("[BlinkControls] Classic worker created", { type: "classic" });
         worker.onmessage = (event) => {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
