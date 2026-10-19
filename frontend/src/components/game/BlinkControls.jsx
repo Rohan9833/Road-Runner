@@ -87,14 +87,35 @@ export default function BlinkControls({ onBlink }) {
         if (cancelled) return;
 
         setLoadingStage("Starting background blink detection…");
+        console.info("[BlinkControls] Camera stream ready", {
+          width: video.videoWidth,
+          height: video.videoHeight,
+          currentTime: video.currentTime,
+          readyState: video.readyState,
+          tracks: stream.getVideoTracks().map((track) => ({
+            label: track.label,
+            readyState: track.readyState,
+            settings: track.getSettings?.(),
+          })),
+        });
+        const workerUrl = new URL("./blinkDetection.worker.js", import.meta.url);
+        console.info("[BlinkControls] Creating MediaPipe worker", {
+          workerUrl: workerUrl.href,
+          mediaPipePackageVersion: "1.1.1",
+          detectionIntervalMs: DETECTION_INTERVAL_MS,
+        });
         const worker = new Worker(
-          new URL("./blinkDetection.worker.js", import.meta.url),
+          workerUrl,
           { type: "module" }
         );
         workerRef.current = worker;
+        console.info("[BlinkControls] Worker created", { type: "module" });
         worker.onmessage = (event) => {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
+          if (message?.type !== "FRAME_DONE") {
+            console.info("[BlinkControls] Worker message", message);
+          }
           if (message?.type === "READY") {
             workerReadyRef.current = true;
             lastVideoTimeRef.current = -1;
@@ -106,21 +127,34 @@ export default function BlinkControls({ onBlink }) {
           } else if (message?.type === "FRAME_DONE") {
             frameBusyRef.current = false;
           } else if (message?.type === "FRAME_ERROR") {
-            console.warn("Blink frame processing failed:", message.message);
+            console.error("[BlinkControls] Worker frame processing failed", message);
           } else if (message?.type === "ERROR") {
-            setError(message.message || "Could not initialize blink detection.");
+            console.error("[BlinkControls] Worker initialization reported an error", message);
+            setError(
+              `Worker init failed at ${message.stage || "unknown stage"}: ${message.message || "Unknown MediaPipe error"}`
+            );
             setStatus("error");
             stopCamera();
           }
         };
         worker.onerror = (event) => {
-          console.error("Blink worker error:", event.message);
+          console.error("[BlinkControls] Worker runtime error", {
+            message: event.message,
+            filename: event.filename,
+            lineno: event.lineno,
+            colno: event.colno,
+            event,
+          });
           if (!cancelled) {
             setError("Background blink detection failed to start. Please try again.");
             setStatus("error");
             stopCamera();
           }
         };
+        worker.onmessageerror = (event) => {
+          console.error("[BlinkControls] Worker message deserialization error", event);
+        };
+        console.info("[BlinkControls] Sending INIT to worker");
         worker.postMessage({ type: "INIT" });
 
         const detect = async () => {
