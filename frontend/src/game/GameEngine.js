@@ -118,7 +118,7 @@ export function createGame(canvas, callbacks = {}) {
   function tick(timestamp) {
     if (destroyed) return;
     if (!previousTime) previousTime = timestamp;
-    const dt = Math.min((timestamp - previousTime) / 1000, .05);
+    const dt = Math.min((timestamp - previousTime) / 1000, .032);
     previousTime = timestamp;
     if (state === "playing") {
       elapsed += dt;
