@@ -5,8 +5,9 @@ import { createObstacle, drawObstacle, updateObstacles } from "./Obstacles.js";
 import { drawBackground } from "./Background.js";
 
 const POWER_PUFF_URL = "/febutaz.png";
-const POWER_PUFF_SIZE = 32;
-const IMMUNITY_SECONDS = 5;
+const POWER_PUFF_WIDTH = 100;
+const POWER_PUFF_HEIGHT = 50;
+const IMMUNITY_SECONDS = 10;
 
 export function createGame(canvas, callbacks = {}) {
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -68,7 +69,13 @@ export function createGame(canvas, callbacks = {}) {
     const y = Math.round(powerPuff.y);
     ctx.save();
     if (powerPuffImage.complete && powerPuffImage.naturalWidth > 0) {
-      ctx.drawImage(powerPuffImage, x, y, POWER_PUFF_SIZE, POWER_PUFF_SIZE);
+      ctx.drawImage(
+        powerPuffImage,
+        x,
+        y,
+        POWER_PUFF_WIDTH,
+        POWER_PUFF_HEIGHT
+      );
     } else {
       // Keep pickups visible while the logo image is loading or unavailable.
       ctx.fillStyle = "#fffaf0";
@@ -116,7 +123,12 @@ export function createGame(canvas, callbacks = {}) {
       powerPuffSpawnIn -= dt;
       if (powerPuffSpawnIn <= 0) {
         // Pickups appear at running height so the player can collect them naturally.
-        powerPuffs.push({ x: GAME.width + 12, y: GAME.groundY - POWER_PUFF_SIZE - 7, width: POWER_PUFF_SIZE, height: POWER_PUFF_SIZE });
+        powerPuffs.push({
+          x: GAME.width + 12,
+          y: GAME.groundY - POWER_PUFF_HEIGHT - 7,
+          width: POWER_PUFF_WIDTH,
+          height: POWER_PUFF_HEIGHT
+        });
         powerPuffSpawnIn = 10 + Math.random() * 6;
       }
       for (const powerPuff of powerPuffs) powerPuff.x -= speed * dt;
