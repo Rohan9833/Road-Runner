@@ -276,14 +276,14 @@ kbd { display:inline-flex; align-items:center; justify-content:center; min-width
 
   .blink-camera-frame {
     width: 100%;
-    max-width: 360px;
-    margin: 8px auto 0;
+    max-width: none;
+    margin: 8px 0 0;
     aspect-ratio: 16 / 9;
   }
 
   .blink-widget-footer {
-    width: min(360px, 100%);
-    margin: 0 auto;
+    width: 100%;
+    margin: 0;
     align-items: center;
     flex-direction: row;
     gap: 8px;
@@ -328,6 +328,6 @@ kbd { display:inline-flex; align-items:center; justify-content:center; min-width
   }
 
   .blink-widget {
-    width: 100px;
+    width: 100%;
   }
 }
