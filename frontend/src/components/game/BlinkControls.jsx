@@ -3,11 +3,14 @@ import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 // Responsive blink detection: keep the original fast-spike path plus a normal blink path.
-const BLINK_CLOSED_THRESHOLD = 0.40;
-const BLINK_OPEN_THRESHOLD = 0.20;
-const FAST_BLINK_DELTA = 0.16;
-const FAST_BLINK_MIN_PREV = 0.16;
-const FAST_BLINK_MIN_PEAK = 0.38;
+// MediaPipe blink scores vary with camera, lighting, and face position. Use
+// a more tolerant two-eye threshold while still requiring both eyes to react.
+const BLINK_CLOSED_THRESHOLD = 0.30;
+const BLINK_OPEN_THRESHOLD = 0.18;
+const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.22;
+const FAST_BLINK_DELTA = 0.12;
+const FAST_BLINK_MIN_PREV = 0.18;
+const FAST_BLINK_MIN_PEAK = 0.30;
 const JUMP_DEBOUNCE_MS = 220;
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
@@ -136,7 +139,12 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             const now = performance.now();
             const previousLeft = previousLeftRef.current;
             const previousRight = previousRightRef.current;
-            const bothClosed = left >= BLINK_CLOSED_THRESHOLD && right >= BLINK_CLOSED_THRESHOLD;
+            // The two eye scores are not always equal when the full face is
+            // visible. Accept a strong score from either eye when the other
+            // eye also shows a meaningful closure response.
+            const bothClosed =
+              (left >= BLINK_CLOSED_THRESHOLD && right >= BLINK_ONE_EYE_SUPPORT_THRESHOLD) ||
+              (right >= BLINK_CLOSED_THRESHOLD && left >= BLINK_ONE_EYE_SUPPORT_THRESHOLD);
             const bothOpen = left <= BLINK_OPEN_THRESHOLD && right <= BLINK_OPEN_THRESHOLD;
 
             // Save raw scores so a quick closure can trigger without smoothing delay.
