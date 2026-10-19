@@ -40,7 +40,9 @@ export default function GameCanvas() {
   const jump = () => gameRef.current?.jump();
   const togglePause = () => gameRef.current?.togglePause();
   const restart = () => gameRef.current?.restart();
-  const handleBlink = useCallback(() => gameRef.current?.jump(), []);
+  const handleBlink = useCallback(() => {
+    if (status === "ready" || status === "playing") gameRef.current?.jump();
+  }, [status]);
 
   return <section className="game-shell" aria-label="Road Runner game">
     <div className="game-topbar">
