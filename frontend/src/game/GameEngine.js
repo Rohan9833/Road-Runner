@@ -99,7 +99,7 @@ export function createGame(canvas, callbacks = {}) {
       ctx.strokeStyle = "#4a943e"; ctx.lineWidth = 3;
       ctx.setLineDash([5, 4]);
       ctx.beginPath();
-      ctx.ellipse(player.x + player.width / 2, player.y + player.height / 2, player.width * .72, player.height * .72, 0, 0, Math.PI * 2);
+      ctx.ellipse(player.x + player.width / 2, player.y + player.height / 2 - 8, player.width * .72, player.height * .72, 0, 0, Math.PI * 2);
       ctx.stroke(); ctx.restore();
       ctx.fillStyle = "#186049"; ctx.font = "bold 12px monospace"; ctx.textAlign = "right";
       ctx.fillText(`POWER PUFF ${Math.ceil(immunityRemaining)}s`, GAME.width - 18, 24);
@@ -129,7 +129,7 @@ export function createGame(canvas, callbacks = {}) {
           width: POWER_PUFF_WIDTH,
           height: POWER_PUFF_HEIGHT
         });
-        powerPuffSpawnIn = 10 + Math.random() * 6;
+        powerPuffSpawnIn = 10 + Math.random() * 13;
       }
       for (const powerPuff of powerPuffs) powerPuff.x -= speed * dt;
       powerPuffs = powerPuffs.filter((powerPuff) => powerPuff.x + powerPuff.width > -10);
