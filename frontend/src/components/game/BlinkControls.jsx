@@ -6,7 +6,9 @@ import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 // MediaPipe blink scores vary with camera, lighting, and face position. Use
 // a more tolerant two-eye threshold while still requiring both eyes to react.
 const BLINK_CLOSED_THRESHOLD = 0.30;
-const BLINK_OPEN_THRESHOLD = 0.18;
+// A partially opened eye may still have a moderate blink score; allow reopening
+// at a higher score so users do not need to open their eyes completely.
+const BLINK_OPEN_THRESHOLD = 0.30;
 const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.22;
 const FAST_BLINK_DELTA = 0.12;
 const FAST_BLINK_MIN_PREV = 0.18;
@@ -14,7 +16,7 @@ const FAST_BLINK_MIN_PEAK = 0.30;
 const JUMP_DEBOUNCE_MS = 220;
 // Face inference is expensive on phones. 12–15 checks/sec is enough to catch
 // a blink while leaving more CPU time for the game animation.
-const DETECTION_INTERVAL_MS = 125; // 8 inference passes/sec to prioritize smooth gameplay.
+const DETECTION_INTERVAL_MS = 160; // About 6 inference passes/sec to reduce main-thread stalls.
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -72,9 +74,9 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           video: {
             facingMode: "user",
             // Smaller camera frames dramatically reduce MediaPipe CPU cost on phones.
-            width: { ideal: isMobile ? 240 : 480 },
-            height: { ideal: isMobile ? 180 : 360 },
-            frameRate: { ideal: isMobile ? 15 : 24, max: isMobile ? 15 : 30 },
+            width: { ideal: isMobile ? 160 : 480 },
+            height: { ideal: isMobile ? 120 : 360 },
+            frameRate: { ideal: isMobile ? 10 : 24, max: isMobile ? 12 : 30 },
           },
           audio: false,
         });
