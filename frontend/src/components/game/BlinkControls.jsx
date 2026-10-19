@@ -40,10 +40,16 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const [loadingStage, setLoadingStage] = useState("Waiting for camera…");
   const [blinkCount, setBlinkCount] = useState(0);
   const [blinkPulse, setBlinkPulse] = useState(false);
+  const [blinkNotice, setBlinkNotice] = useState("");
 
-  useEffect(() => {
-    onBlinkRef.current = onBlink;
-  }, [onBlink]);
+  // Blink detection now reports an event only; it no longer triggers a game jump.
+  const reportBlink = () => {
+    setBlinkCount((count) => count + 1);
+    setBlinkNotice("Blink detected");
+    setBlinkPulse(true);
+    window.setTimeout(() => setBlinkPulse(false), 350);
+    window.setTimeout(() => setBlinkNotice(""), 1400);
+  };
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -184,10 +190,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
               lastJumpTimeRef.current = now;
               wasClosedRef.current = true;
               closedSinceRef.current = now;
-              setBlinkCount((count) => count + 1);
-              setBlinkPulse(true);
-              window.setTimeout(() => setBlinkPulse(false), 650);
-              onBlinkRef.current?.();
+              reportBlink();
             } else if (!wasClosedRef.current && bothClosed) {
               wasClosedRef.current = true;
               closedSinceRef.current = now;
@@ -203,10 +206,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
                 now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS
               ) {
                 lastJumpTimeRef.current = now;
-                setBlinkCount((count) => count + 1);
-                setBlinkPulse(true);
-                window.setTimeout(() => setBlinkPulse(false), 650);
-                onBlinkRef.current?.();
+                reportBlink();
               } else if (closedFor > 700) {
                 wasClosedRef.current = false;
                 closedSinceRef.current = 0;
@@ -262,29 +262,24 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         <span>BLINK CONTROL</span>
         <span className="blink-widget-count">{blinkCount} JUMPS</span>
       </div>
-      <div className="blink-camera-frame">
-        <video ref={videoRef} className="blink-camera-video" autoPlay muted playsInline />
-        {!enabled && (
-          <div className="blink-camera-placeholder">
-            <Camera size={21} />
-            <span>YOUR CAM</span>
-          </div>
-        )}
-        {enabled && status === "loading" && (
-          <div className="blink-camera-overlay"><LoaderCircle size={20} className="blink-spinner" /><span>{loadingStage}</span></div>
-        )}
-        {enabled && status === "error" && (
-          <div className="blink-camera-overlay blink-camera-error"><CameraOff size={19} /><span>{error}</span></div>
-        )}
-        {enabled && status === "ready" && (
-          <span className="blink-camera-live"><span /> LIVE</span>
-        )}
-        {blinkPulse && <div className="blink-jump-flash"><Eye size={16} /> JUMP!</div>}
-      </div>
+      {/* Keep the video playing for detection, but do not render a camera preview. */}
+      <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
+      {enabled && status === "loading" && (
+        <div className="blink-event-status"><LoaderCircle size={12} className="blink-spinner" /> {loadingStage}</div>
+      )}
+      {enabled && status === "error" && (
+        <div className="blink-event-status blink-camera-error"><CameraOff size={12} /> {error}</div>
+      )}
+      {enabled && status === "ready" && (
+        <div className="blink-event-status">
+          <span className="blink-status-dot" /> Detection active
+          {blinkNotice && <strong className="blink-detected-notice"><Eye size={12} /> {blinkNotice}</strong>}
+        </div>
+      )}
       <div className="blink-widget-footer">
         <div className="blink-widget-copy">
           <strong>{statusLabel}</strong>
-          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink both eyes to leap" : "Jump without your hands"}</span>
+          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink detection only · no jump" : "Detect blinks without preview"}</span>
         </div>
         <button type="button" className={`blink-toggle ${enabled ? "blink-toggle-on" : ""}`} onClick={toggleEnabled}>
           {enabled ? <><EyeOff size={14} /> Turn off</> : <><Camera size={14} /> Enable</>}
