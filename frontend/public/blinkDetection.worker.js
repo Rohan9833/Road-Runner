@@ -3,13 +3,14 @@ const WASM_URL = "/mediapipe/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-const BLINK_CLOSED_THRESHOLD = 0.30;
-const BLINK_OPEN_THRESHOLD = 0.30;
-const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.22;
-const FAST_BLINK_DELTA = 0.12;
-const FAST_BLINK_MIN_PREV = 0.18;
-const FAST_BLINK_MIN_PEAK = 0.30;
-const JUMP_DEBOUNCE_MS = 220;
+// Use separate close/open thresholds (hysteresis) to avoid score jitter.
+const BLINK_CLOSED_THRESHOLD = 0.36;
+const BLINK_OPEN_THRESHOLD = 0.22;
+const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.20;
+const FAST_BLINK_DELTA = 0.16;
+const FAST_BLINK_MIN_PREV = 0.16;
+const FAST_BLINK_MIN_PEAK = 0.42;
+const JUMP_DEBOUNCE_MS = 350;
 
 let detector = null;
 let previousLeft = 0;
@@ -98,10 +99,18 @@ self.onmessage = async (event) => {
       previousLeft = left;
       previousRight = right;
       let blink = false;
-      if (fastBlink && now - lastJumpTime >= JUMP_DEBOUNCE_MS) {
-        lastJumpTime = now; wasClosed = true; closedSince = now; blink = true;
-      } else if (!wasClosed && bothClosed) {
-        wasClosed = true; closedSince = now;
+      if (!wasClosed && bothClosed) {
+        wasClosed = true;
+        closedSince = now;
+        // A brief closure may be gone by the next sampled frame. Detect only
+        // a strong, fast rise here; otherwise wait for the eyes to reopen.
+        if (
+          fastBlink &&
+          now - lastJumpTime >= JUMP_DEBOUNCE_MS
+        ) {
+          lastJumpTime = now;
+          blink = true;
+        }
       } else if (wasClosed && bothOpen) {
         const closedFor = now - closedSince;
         wasClosed = false; closedSince = 0;
