@@ -47,3 +47,57 @@ kbd { display:inline-flex; align-items:center; justify-content:center; min-width
   .play-footer { flex-direction:column; align-items:center; text-align:center; font-size:7px; }
 }
 @media (max-width:390px) { .controls-copy { font-size:9px; } .controls-label { display:none; } .game-stats { gap:8px; } .game-status { max-width:90px; line-height:1.45; } }
+
+/* Webcam blink-to-jump widget */
+.blink-widget {
+  position: absolute;
+  z-index: 6;
+  top: 14px;
+  right: 14px;
+  width: 188px;
+  padding: 9px;
+  color: #f8f4e9;
+  background: rgba(24, 36, 31, .94);
+  border: 1px solid rgba(229, 221, 193, .35);
+  box-shadow: 3px 3px 0 rgba(24, 36, 31, .22);
+  font-family: var(--mono);
+  backdrop-filter: blur(8px);
+}
+.blink-widget-heading { display:flex; align-items:center; gap:6px; min-height:16px; font-size:8px; letter-spacing:.09em; color:#f1e9d4; }
+.blink-live-dot { width:6px; height:6px; flex:none; border-radius:50%; background:#a7ad91; }
+.blink-widget-enabled .blink-live-dot { background:#7fe0a0; box-shadow:0 0 8px rgba(127,224,160,.65); }
+.blink-widget-count { margin-left:auto; color:#b6c6ae; font-size:7px; white-space:nowrap; }
+.blink-camera-frame { position:relative; margin-top:8px; aspect-ratio:16 / 9; overflow:hidden; background:#26342f; border:1px solid rgba(237,230,208,.2); }
+.blink-camera-video { display:block; width:100%; height:100%; object-fit:cover; transform:scaleX(-1); }
+.blink-camera-placeholder { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px; color:#c4cbb8; background:linear-gradient(145deg,#35463d,#1e2c28); }
+.blink-camera-placeholder span { font-size:7px; letter-spacing:.16em; }
+.blink-camera-overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:10px; text-align:center; color:#f7efd9; background:rgba(24,36,31,.88); font-family:var(--sans); font-size:10px; line-height:1.4; }
+.blink-camera-error { color:#ffcfb8; }
+.blink-camera-live { position:absolute; top:6px; left:6px; display:flex; align-items:center; gap:4px; padding:3px 5px; color:#fff; background:rgba(24,36,31,.72); font-size:7px; letter-spacing:.1em; }
+.blink-camera-live span { width:5px; height:5px; border-radius:50%; background:#7fe0a0; }
+.blink-widget-footer { display:flex; align-items:center; justify-content:space-between; gap:7px; padding-top:8px; }
+.blink-widget-copy { display:grid; min-width:0; gap:4px; }
+.blink-widget-copy strong { color:#e8d8ad; font-size:7px; letter-spacing:.08em; line-height:1.3; }
+.blink-widget-copy > span { color:#b8c0b1; font-family:var(--sans); font-size:9px; line-height:1.25; }
+.blink-toggle { display:inline-flex; flex:none; align-items:center; justify-content:center; gap:4px; min-height:27px; padding:0 7px; border:1px solid #82927b; background:#f1e7d1; color:#263c30; font-size:8px; font-family:var(--mono); cursor:pointer; transition:background .15s ease, transform .15s ease; }
+.blink-toggle:hover { background:#fff7e5; transform:translateY(-1px); }
+.blink-toggle-on { background:#c8e4c4; border-color:#a8c6a4; }
+.blink-widget-pulse { animation:blink-widget-pulse .32s ease-out; }
+.blink-jump-flash { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; gap:6px; color:#fff5d8; background:rgba(50,100,65,.58); font-family:var(--mono); font-size:15px; font-weight:800; letter-spacing:.12em; animation:blink-jump-flash .65s ease-out forwards; pointer-events:none; }
+.blink-spinner { animation:blink-spin .9s linear infinite; }
+@keyframes blink-spin { to { transform:rotate(360deg); } }
+@keyframes blink-widget-pulse { 50% { box-shadow:0 0 0 3px rgba(127,224,160,.75), 3px 3px 0 rgba(24,36,31,.22); } }
+@keyframes blink-jump-flash { 0% { opacity:0; transform:scale(.92); } 18% { opacity:1; transform:scale(1); } 72% { opacity:1; } 100% { opacity:0; } }
+@media (max-width:650px) {
+  .blink-widget { top:8px; right:8px; width:148px; padding:7px; }
+  .blink-widget-heading { font-size:7px; gap:4px; }
+  .blink-camera-frame { margin-top:6px; }
+  .blink-widget-footer { padding-top:6px; gap:4px; }
+  .blink-widget-copy strong { font-size:6px; }
+  .blink-widget-copy > span { font-size:8px; }
+  .blink-toggle { min-height:24px; padding:0 5px; font-size:7px; }
+}
+@media (max-width:390px) {
+  .blink-widget { width:130px; top:6px; right:6px; }
+  .blink-widget-count { display:none; }
+}
