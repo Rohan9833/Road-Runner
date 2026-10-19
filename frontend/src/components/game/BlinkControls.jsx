@@ -28,6 +28,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
+  const [loadingStage, setLoadingStage] = useState("Waiting for camera…");
   const [blinkCount, setBlinkCount] = useState(0);
   const [blinkPulse, setBlinkPulse] = useState(false);
 
@@ -51,6 +52,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
     async function startCamera() {
       try {
         setStatus("loading");
+        setLoadingStage("Requesting camera…");
         setError("");
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Camera access requires HTTPS or localhost.");
@@ -74,17 +76,33 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         await video.play();
         if (cancelled) return;
 
-        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+        setLoadingStage("Loading vision runtime…");
+        const vision = await Promise.race([
+          FilesetResolver.forVisionTasks(WASM_URL),
+          new Promise((_, reject) =>
+            window.setTimeout(
+              () => reject(new Error("Timed out loading MediaPipe runtime. Check the iPad internet connection or CDN access.")),
+              20000
+            )
+          ),
+        ]);
         if (cancelled) return;
 
-        // CPU is more compatible with iPad Safari than forcing the GPU delegate.
-        // A GPU delegate that is unsupported can leave initialization stuck on some devices.
-        const detector = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
-          runningMode: "VIDEO",
-          numFaces: 1,
-          outputFaceBlendshapes: true,
-        });
+        setLoadingStage("Loading face model…");
+        const detector = await Promise.race([
+          FaceLandmarker.createFromOptions(vision, {
+            baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
+            runningMode: "VIDEO",
+            numFaces: 1,
+            outputFaceBlendshapes: true,
+          }),
+          new Promise((_, reject) =>
+            window.setTimeout(
+              () => reject(new Error("Timed out loading the face model. The model download may be blocked or too slow on this iPad.")),
+              25000
+            )
+          ),
+        ]);
         if (cancelled) {
           detector.close();
           return;
@@ -228,7 +246,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           </div>
         )}
         {enabled && status === "loading" && (
-          <div className="blink-camera-overlay"><LoaderCircle size={20} className="blink-spinner" /><span>Starting camera…</span></div>
+          <div className="blink-camera-overlay"><LoaderCircle size={20} className="blink-spinner" /><span>{loadingStage}</span></div>
         )}
         {enabled && status === "error" && (
           <div className="blink-camera-overlay blink-camera-error"><CameraOff size={19} /><span>{error}</span></div>
