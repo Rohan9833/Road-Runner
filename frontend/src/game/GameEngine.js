@@ -23,7 +23,7 @@ export function createGame(canvas, callbacks = {}) {
   function resizeCanvas() {
     // Lower backing resolution on mobile to reduce canvas fill/render cost.
     const isMobile = window.matchMedia("(max-width: 650px)").matches;
-    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 2);
     canvas.width = GAME.width * dpr; canvas.height = GAME.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; render();
   }

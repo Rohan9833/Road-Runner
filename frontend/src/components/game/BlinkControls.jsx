@@ -14,7 +14,7 @@ const FAST_BLINK_MIN_PEAK = 0.30;
 const JUMP_DEBOUNCE_MS = 220;
 // Face inference is expensive on phones. 12–15 checks/sec is enough to catch
 // a blink while leaving more CPU time for the game animation.
-const DETECTION_INTERVAL_MS = 75;
+const DETECTION_INTERVAL_MS = 125; // 8 inference passes/sec to prioritize smooth gameplay.
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -72,9 +72,9 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           video: {
             facingMode: "user",
             // Smaller camera frames dramatically reduce MediaPipe CPU cost on phones.
-            width: { ideal: isMobile ? 320 : 480 },
-            height: { ideal: isMobile ? 240 : 360 },
-            frameRate: { ideal: isMobile ? 20 : 24, max: isMobile ? 24 : 30 },
+            width: { ideal: isMobile ? 240 : 480 },
+            height: { ideal: isMobile ? 180 : 360 },
+            frameRate: { ideal: isMobile ? 15 : 24, max: isMobile ? 15 : 30 },
           },
           audio: false,
         });
