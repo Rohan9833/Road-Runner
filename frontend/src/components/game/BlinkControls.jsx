@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 
 // Camera sampling stays lightweight; MediaPipe inference runs in the worker.
-const DETECTION_INTERVAL_MS = 160;
+const DETECTION_INTERVAL_MS = 90;
 
 export default function BlinkControls({ onBlink }) {
   const videoRef = useRef(null);
@@ -70,7 +70,7 @@ export default function BlinkControls({ onBlink }) {
             // Keep the established camera resolution so blink scores remain reliable.
             width: { ideal: isMobile ? 160 : 480 },
             height: { ideal: isMobile ? 120 : 360 },
-            frameRate: { ideal: isMobile ? 10 : 24, max: isMobile ? 12 : 30 },
+            frameRate: { ideal: isMobile ? 15 : 24, max: isMobile ? 20 : 30 },
           },
           audio: false,
         });
