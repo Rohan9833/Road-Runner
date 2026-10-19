@@ -116,7 +116,10 @@ export function createGame(canvas, callbacks = {}) {
     previousTime = timestamp;
     if (state === "playing") {
       elapsed += dt;
-      speed = Math.min(GAME.maxSpeed, GAME.initialSpeed + elapsed * GAME.speedRamp * 8);
+      const baseSpeed = Math.min(GAME.maxSpeed, GAME.initialSpeed + elapsed * GAME.speedRamp * 8);
+      // Give mobile players a little more pace without changing desktop gameplay.
+      const mobileSpeedMultiplier = window.matchMedia("(max-width: 650px)").matches ? 1.22 : 1;
+      speed = baseSpeed * mobileSpeedMultiplier;
       updatePlayer(player, dt, true);
       obstacles = updateObstacles(obstacles, dt, speed);
 
