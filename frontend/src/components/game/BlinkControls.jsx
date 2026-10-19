@@ -12,6 +12,9 @@ const FAST_BLINK_DELTA = 0.12;
 const FAST_BLINK_MIN_PREV = 0.18;
 const FAST_BLINK_MIN_PEAK = 0.30;
 const JUMP_DEBOUNCE_MS = 220;
+// Face inference is expensive on phones. 12–15 checks/sec is enough to catch
+// a blink while leaving more CPU time for the game animation.
+const DETECTION_INTERVAL_MS = 75;
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
@@ -23,6 +26,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const streamRef = useRef(null);
   const onBlinkRef = useRef(onBlink);
   const lastVideoTimeRef = useRef(-1);
+  const lastDetectionTimeRef = useRef(0);
   const previousLeftRef = useRef(0);
   const previousRightRef = useRef(0);
   const lastJumpTimeRef = useRef(0);
@@ -63,8 +67,15 @@ export default function BlinkControls({ onBlink, gameStatus }) {
 
         // Request camera access first so Safari/iPadOS can show its permission
         // prompt immediately, before the MediaPipe model and WASM files load.
+        const isMobile = window.matchMedia("(max-width: 650px)").matches;
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
+          video: {
+            facingMode: "user",
+            // Smaller camera frames dramatically reduce MediaPipe CPU cost on phones.
+            width: { ideal: isMobile ? 320 : 480 },
+            height: { ideal: isMobile ? 240 : 360 },
+            frameRate: { ideal: isMobile ? 20 : 24, max: isMobile ? 24 : 30 },
+          },
           audio: false,
         });
         if (cancelled) {
@@ -115,6 +126,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         previousLeftRef.current = 0;
         previousRightRef.current = 0;
         lastVideoTimeRef.current = -1;
+        lastDetectionTimeRef.current = 0;
         lastJumpTimeRef.current = 0;
         closedSinceRef.current = 0;
         wasClosedRef.current = false;
@@ -125,14 +137,17 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           const currentVideo = videoRef.current;
           const landmarker = detectorRef.current;
 
+          const frameNow = performance.now();
           if (
             currentVideo &&
             landmarker &&
             currentVideo.readyState >= 2 &&
-            currentVideo.currentTime !== lastVideoTimeRef.current
+            currentVideo.currentTime !== lastVideoTimeRef.current &&
+            frameNow - lastDetectionTimeRef.current >= DETECTION_INTERVAL_MS
           ) {
             lastVideoTimeRef.current = currentVideo.currentTime;
-            const result = landmarker.detectForVideo(currentVideo, performance.now());
+            lastDetectionTimeRef.current = frameNow;
+            const result = landmarker.detectForVideo(currentVideo, frameNow);
             const categories = result.faceBlendshapes?.[0]?.categories ?? [];
             const left = categories.find((item) => item.categoryName === "eyeBlinkLeft")?.score ?? 0;
             const right = categories.find((item) => item.categoryName === "eyeBlinkRight")?.score ?? 0;
