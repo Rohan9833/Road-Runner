@@ -125,10 +125,10 @@ export default function BlinkControls({ onBlink, gameStatus }) {
               right > FAST_BLINK_MIN_PEAK;
 
             if (readyToBlinkRef.current && (bothClosed || fastBlink)) {
+              readyToBlinkRef.current = false;
               const now = performance.now();
               if (now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS) {
                 lastJumpTimeRef.current = now;
-                readyToBlinkRef.current = false;
                 setBlinkCount((count) => count + 1);
                 setBlinkPulse(true);
                 window.setTimeout(() => setBlinkPulse(false), 650);
