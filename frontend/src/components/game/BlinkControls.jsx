@@ -21,11 +21,12 @@ const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/was
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-export default function BlinkControls() {
+export default function BlinkControls({ onBlink }) {
   const videoRef = useRef(null);
   const detectorRef = useRef(null);
   const frameRef = useRef(null);
   const streamRef = useRef(null);
+  const onBlinkRef = useRef(onBlink);
   const lastVideoTimeRef = useRef(-1);
   const lastDetectionTimeRef = useRef(0);
   const previousLeftRef = useRef(0);
@@ -41,11 +42,16 @@ export default function BlinkControls() {
   const [blinkPulse, setBlinkPulse] = useState(false);
   const [blinkNotice, setBlinkNotice] = useState("");
 
-  // Blink detection now reports an event only; it no longer triggers a game jump.
+  useEffect(() => {
+    onBlinkRef.current = onBlink;
+  }, [onBlink]);
+
+  // Show a small confirmation and notify the game to jump.
   const reportBlink = () => {
     setBlinkCount((count) => count + 1);
     setBlinkNotice("Blink detected");
     setBlinkPulse(true);
+    onBlinkRef.current?.();
     window.setTimeout(() => setBlinkPulse(false), 350);
     window.setTimeout(() => setBlinkNotice(""), 1400);
   };
@@ -259,7 +265,7 @@ export default function BlinkControls() {
       <div className="blink-widget-heading">
         <span className="blink-live-dot" />
         <span>BLINK CONTROL</span>
-        <span className="blink-widget-count">{blinkCount} JUMPS</span>
+        <span className="blink-widget-count">{blinkCount} BLINKS</span>
       </div>
       {/* Keep the video playing for detection, but do not render a camera preview. */}
       <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
@@ -278,7 +284,7 @@ export default function BlinkControls() {
       <div className="blink-widget-footer">
         <div className="blink-widget-copy">
           <strong>{statusLabel}</strong>
-          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink detection only · no jump" : "Detect blinks without preview"}</span>
+          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink to jump" : "Detect blinks without preview"}</span>
         </div>
         <button type="button" className={`blink-toggle ${enabled ? "blink-toggle-on" : ""}`} onClick={toggleEnabled}>
           {enabled ? <><EyeOff size={14} /> Turn off</> : <><Camera size={14} /> Enable</>}
