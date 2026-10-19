@@ -1,7 +1,7 @@
 /* Classic worker: MediaPipe's WASM loader uses importScripts internally. */
 const MEDIAPIPE_VERSION = "0.10.14";
 const WASM_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/wasm`;
-const BUNDLE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.js`;
+const BUNDLE_URL = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${MEDIAPIPE_VERSION}/vision_bundle.cjs`;
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
@@ -33,9 +33,15 @@ async function initialize() {
   let stage = "load classic MediaPipe bundle";
   try {
     console.info("[BlinkWorker] Loading classic MediaPipe bundle", BUNDLE_URL);
+    // The package publishes a CommonJS bundle, not a classic-script vision_bundle.js.
+    // Expose CommonJS globals before loading it in this classic worker.
+    self.exports = {};
+    self.module = { exports: self.exports };
     importScripts(BUNDLE_URL);
 
-    const api = self.vision || self.MediaPipeTasksVision;
+    const api = self.module?.exports?.FaceLandmarker
+      ? self.module.exports
+      : self.vision || self.MediaPipeTasksVision;
     if (!api?.FaceLandmarker || !api?.FilesetResolver) {
       throw new Error("MediaPipe bundle loaded, but FaceLandmarker/FilesetResolver exports were not found on self.vision.");
     }
