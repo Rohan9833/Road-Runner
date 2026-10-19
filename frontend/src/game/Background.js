@@ -2,7 +2,7 @@ import { GAME } from "./constants.js";
 
 export function drawBackground(ctx, elapsed, speed, score = 0) {
   const { width, height, groundY } = GAME;
-  const isNight = Math.floor(score / 500) % 2 === 1;
+  const isNight = Math.floor(score / 100) % 2 === 1;
 
   const skyColor = isNight ? "#18243d" : "#f8f0db";
   const sunMoonColor = isNight ? "#f4efc6" : "#f2cd85";
