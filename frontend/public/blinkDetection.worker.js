@@ -4,13 +4,15 @@ const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
 // Use separate close/open thresholds (hysteresis) to avoid score jitter.
+// Blendshape scores are confidence-like values: a lower score means the eye is open.
+ // Use a very permissive open threshold so partially reopened eyes reset the blink.
 const BLINK_CLOSED_THRESHOLD = 0.36;
-const BLINK_OPEN_THRESHOLD = 0.22;
-const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.20;
-const FAST_BLINK_DELTA = 0.16;
-const FAST_BLINK_MIN_PREV = 0.16;
-const FAST_BLINK_MIN_PEAK = 0.42;
-const JUMP_DEBOUNCE_MS = 350;
+const BLINK_OPEN_THRESHOLD = 0.38;
+const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.16;
+const FAST_BLINK_DELTA = 0.12;
+const FAST_BLINK_MIN_PREV = 0.20;
+const FAST_BLINK_MIN_PEAK = 0.36;
+const JUMP_DEBOUNCE_MS = 300;
 
 let detector = null;
 let previousLeft = 0;
@@ -91,6 +93,8 @@ self.onmessage = async (event) => {
       const bothClosed =
         (left >= BLINK_CLOSED_THRESHOLD && right >= BLINK_ONE_EYE_SUPPORT_THRESHOLD) ||
         (right >= BLINK_CLOSED_THRESHOLD && left >= BLINK_ONE_EYE_SUPPORT_THRESHOLD);
+      // Treat eyes as open once both scores fall below the relaxed threshold;
+      // this allows a partial reopening to finish the blink instead of sticking closed.
       const bothOpen = left <= BLINK_OPEN_THRESHOLD && right <= BLINK_OPEN_THRESHOLD;
       const fastBlink =
         left >= FAST_BLINK_MIN_PEAK && right >= FAST_BLINK_MIN_PEAK &&
@@ -102,20 +106,18 @@ self.onmessage = async (event) => {
       if (!wasClosed && bothClosed) {
         wasClosed = true;
         closedSince = now;
-        // A brief closure may be gone by the next sampled frame. Detect only
-        // a strong, fast rise here; otherwise wait for the eyes to reopen.
-        if (
-          fastBlink &&
-          now - lastJumpTime >= JUMP_DEBOUNCE_MS
-        ) {
+        // A strong closure can be detected immediately so short blinks are not missed.
+        if (fastBlink && now - lastJumpTime >= JUMP_DEBOUNCE_MS) {
           lastJumpTime = now;
           blink = true;
         }
       } else if (wasClosed && bothOpen) {
         const closedFor = now - closedSince;
-        wasClosed = false; closedSince = 0;
-        if (closedFor > 0 && closedFor <= 700 && now - lastJumpTime >= JUMP_DEBOUNCE_MS) {
-          lastJumpTime = now; blink = true;
+        wasClosed = false;
+        closedSince = 0;
+        if (closedFor > 0 && closedFor <= 900 && now - lastJumpTime >= JUMP_DEBOUNCE_MS) {
+          lastJumpTime = now;
+          blink = true;
         }
       }
       if (blink) self.postMessage({ type: "BLINK_DETECTED" });
