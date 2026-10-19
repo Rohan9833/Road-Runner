@@ -90,7 +90,7 @@ export function createGame(canvas, callbacks = {}) {
 
   function render() {
     if (destroyed) return;
-    drawBackground(ctx, elapsed, speed);
+    drawBackground(ctx, elapsed, speed, score);
     for (const obstacle of obstacles) drawObstacle(ctx, obstacle);
     for (const powerPuff of powerPuffs) drawPowerPuff(powerPuff);
 
