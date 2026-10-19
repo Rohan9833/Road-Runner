@@ -331,3 +331,53 @@ kbd { display:inline-flex; align-items:center; justify-content:center; min-width
     width: 100%;
   }
 }
+
+
+/* Hidden live camera stream: MediaPipe still reads video frames without
+   spending GPU/compositing work on a visible preview. */
+.blink-camera-video-hidden {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  left: -10px;
+  bottom: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.blink-event-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-height: 25px;
+  margin-top: 8px;
+  color: #b8c0b1;
+  font-family: var(--sans);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.blink-status-dot {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: #7fe0a0;
+}
+.blink-detected-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding: 4px 7px;
+  border: 1px solid #8fbd91;
+  border-radius: 3px;
+  background: #d9efd2;
+  color: #186049;
+  font-family: var(--mono);
+  font-size: 9px;
+  animation: blink-notice-in .16s ease-out;
+}
+@keyframes blink-notice-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: translateY(0); }
+}
