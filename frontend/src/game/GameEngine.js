@@ -21,7 +21,9 @@ export function createGame(canvas, callbacks = {}) {
   const setState = (next) => { state = next; callbacks.onStatusChange?.(next); };
 
   function resizeCanvas() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // Lower backing resolution on mobile to reduce canvas fill/render cost.
+    const isMobile = window.matchMedia("(max-width: 650px)").matches;
+    const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1.25 : 2);
     canvas.width = GAME.width * dpr; canvas.height = GAME.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; render();
   }
