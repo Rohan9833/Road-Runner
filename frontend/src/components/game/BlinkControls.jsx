@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-const CLOSED_THRESHOLD = 0.45;
-const OPEN_THRESHOLD = 0.2;
-const FAST_BLINK_DELTA = 0.22;
-const FAST_BLINK_MIN_PEAK = 0.42;
+const CLOSED_THRESHOLD = 0.24;
+const OPEN_THRESHOLD = 0.15;
+const FAST_BLINK_DELTA = 0.10;
+const FAST_BLINK_MIN_PEAK = 0.22;
+const FAST_BLINK_PREVIOUS_MAX = 0.18;
 const JUMP_DEBOUNCE_MS = 220;
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
@@ -115,16 +116,22 @@ export default function BlinkControls({ onBlink, gameStatus }) {
               readyToBlinkRef.current = true;
             }
 
-            const bothClosed = left > CLOSED_THRESHOLD && right > CLOSED_THRESHOLD;
+            // Accept subtle blinks too: the two eyes do not always receive
+            // identical scores, especially with glasses, lighting, or camera angle.
+            const bothClosed =
+              left > CLOSED_THRESHOLD && right > CLOSED_THRESHOLD;
+            const softBlink =
+              (left > 0.32 && right > 0.14) ||
+              (right > 0.32 && left > 0.14);
             const fastBlink =
               left - previousLeft >= FAST_BLINK_DELTA &&
               right - previousRight >= FAST_BLINK_DELTA &&
-              previousLeft < 0.05 &&
-              previousRight < 0.05 &&
+              previousLeft < FAST_BLINK_PREVIOUS_MAX &&
+              previousRight < FAST_BLINK_PREVIOUS_MAX &&
               left > FAST_BLINK_MIN_PEAK &&
               right > FAST_BLINK_MIN_PEAK;
 
-            if (readyToBlinkRef.current && (bothClosed || fastBlink)) {
+            if (readyToBlinkRef.current && (bothClosed || softBlink || fastBlink)) {
               readyToBlinkRef.current = false;
               const now = performance.now();
               if (now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS) {
