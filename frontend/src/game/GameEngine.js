@@ -17,12 +17,16 @@ export function createGame(canvas, callbacks = {}) {
 
   let frame = 0, previousTime = 0, elapsed = 0, score = 0, speed = GAME.initialSpeed, spawnIn = 1.05;
   let state = "ready", destroyed = false, player = createPlayer(), obstacles = [], lastScoreNotice = -1;
+  let isMobile = window.matchMedia("(max-width: 650px)").matches;
   let powerPuffs = [], powerPuffSpawnIn = 7 + Math.random() * 4, immunityRemaining = 0;
-  const setState = (next) => { state = next; callbacks.onStatusChange?.(next); };
+  const setState = (next) => { state = next; render(); callbacks.onStatusChange?.(next); };
+  const scheduleFrame = () => {
+    if (!destroyed && state === "playing" && !frame) frame = window.requestAnimationFrame(tick);
+  };
 
   function resizeCanvas() {
     // Lower backing resolution on mobile to reduce canvas fill/render cost.
-    const isMobile = window.matchMedia("(max-width: 650px)").matches;
+    isMobile = window.matchMedia("(max-width: 650px)").matches;
     const dpr = Math.min(window.devicePixelRatio || 1, isMobile ? 1 : 2);
     canvas.width = GAME.width * dpr; canvas.height = GAME.height * dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.imageSmoothingEnabled = false; render();
@@ -37,8 +41,8 @@ export function createGame(canvas, callbacks = {}) {
 
   function start() {
     if (destroyed || state === "playing") return;
-    if (state === "paused") { setState("playing"); previousTime = 0; return; }
-    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true });
+    if (state === "paused") { setState("playing"); previousTime = 0; scheduleFrame(); return; }
+    reset(); setState("playing"); previousTime = 0; canvas.focus({ preventScroll: true }); scheduleFrame(); scheduleFrame();
   }
 
   function restart() {
@@ -54,7 +58,7 @@ export function createGame(canvas, callbacks = {}) {
 
   function togglePause() {
     if (state === "playing") setState("paused");
-    else if (state === "paused") { setState("playing"); previousTime = 0; }
+    else if (state === "paused") { setState("playing"); previousTime = 0; scheduleFrame(); }
   }
 
   function onKeyDown(event) {
@@ -120,7 +124,7 @@ export function createGame(canvas, callbacks = {}) {
       elapsed += dt;
       const baseSpeed = Math.min(GAME.maxSpeed, GAME.initialSpeed + elapsed * GAME.speedRamp * 8);
       // Give mobile players a little more pace without changing desktop gameplay.
-      const mobileSpeedMultiplier = window.matchMedia("(max-width: 650px)").matches ? 1.22 : 1;
+      const mobileSpeedMultiplier = isMobile ? 1.22 : 1;
       speed = baseSpeed * mobileSpeedMultiplier;
       updatePlayer(player, dt, true);
       obstacles = updateObstacles(obstacles, dt, speed);
@@ -166,14 +170,16 @@ export function createGame(canvas, callbacks = {}) {
       if (score !== lastScoreNotice) { callbacks.onScoreChange?.(score); lastScoreNotice = score; }
       if (hit) setState("over");
     }
-    render(); frame = window.requestAnimationFrame(tick);
+    render();
+    if (state === "playing") frame = window.requestAnimationFrame(tick);
+    else frame = 0;
   }
 
   canvas.addEventListener("keydown", onKeyDown);
   window.addEventListener("keydown", onKeyDown);
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("resize", resizeCanvas);
-  resizeCanvas(); frame = window.requestAnimationFrame(tick);
+  resizeCanvas();
   return {
     start, jump, restart, togglePause,
     destroy() {
