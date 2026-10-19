@@ -3,11 +3,11 @@ import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
 // Responsive blink detection: keep the original fast-spike path plus a normal blink path.
-const BLINK_CLOSED_THRESHOLD = 0.45;
+const BLINK_CLOSED_THRESHOLD = 0.40;
 const BLINK_OPEN_THRESHOLD = 0.20;
-const FAST_BLINK_DELTA = 0.22;
-const FAST_BLINK_MIN_PREV = 0.05;
-const FAST_BLINK_MIN_PEAK = 0.42;
+const FAST_BLINK_DELTA = 0.16;
+const FAST_BLINK_MIN_PREV = 0.16;
+const FAST_BLINK_MIN_PEAK = 0.38;
 const JUMP_DEBOUNCE_MS = 220;
 const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 const MODEL_URL =
