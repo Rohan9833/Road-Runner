@@ -56,21 +56,8 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           throw new Error("Camera access requires HTTPS or localhost.");
         }
 
-        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
-        if (cancelled) return;
-
-        const detector = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
-          runningMode: "VIDEO",
-          numFaces: 1,
-          outputFaceBlendshapes: true,
-        });
-        if (cancelled) {
-          detector.close();
-          return;
-        }
-        detectorRef.current = detector;
-
+        // Request camera access first so Safari/iPadOS can show its permission
+        // prompt immediately, before the MediaPipe model and WASM files load.
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
           audio: false,
@@ -86,6 +73,21 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         video.srcObject = stream;
         await video.play();
         if (cancelled) return;
+
+        const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+        if (cancelled) return;
+
+        const detector = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+          runningMode: "VIDEO",
+          numFaces: 1,
+          outputFaceBlendshapes: true,
+        });
+        if (cancelled) {
+          detector.close();
+          return;
+        }
+        detectorRef.current = detector;
 
         previousLeftRef.current = 0;
         previousRightRef.current = 0;
