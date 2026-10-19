@@ -77,8 +77,10 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         const vision = await FilesetResolver.forVisionTasks(WASM_URL);
         if (cancelled) return;
 
+        // CPU is more compatible with iPad Safari than forcing the GPU delegate.
+        // A GPU delegate that is unsupported can leave initialization stuck on some devices.
         const detector = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: { modelAssetPath: MODEL_URL, delegate: "GPU" },
+          baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
           runningMode: "VIDEO",
           numFaces: 1,
           outputFaceBlendshapes: true,
