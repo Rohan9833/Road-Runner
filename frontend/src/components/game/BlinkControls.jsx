@@ -21,12 +21,11 @@ const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/was
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-export default function BlinkControls({ onBlink, gameStatus }) {
+export default function BlinkControls() {
   const videoRef = useRef(null);
   const detectorRef = useRef(null);
   const frameRef = useRef(null);
   const streamRef = useRef(null);
-  const onBlinkRef = useRef(onBlink);
   const lastVideoTimeRef = useRef(-1);
   const lastDetectionTimeRef = useRef(0);
   const previousLeftRef = useRef(0);
@@ -252,7 +251,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const statusLabel = status === "loading"
     ? "CONNECTING CAMERA"
     : status === "ready"
-      ? gameStatus === "playing" ? "BLINK TO JUMP" : "BLINK CONTROL READY"
+      ? "BLINK DETECTION ACTIVE"
       : status === "error" ? "CAMERA NEEDS ATTENTION" : "HANDS-FREE MODE";
 
   return (
