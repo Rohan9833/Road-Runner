@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { createGame } from "../../game/GameEngine.js";
+import BlinkControls from "./BlinkControls.jsx";
 
 const BEST_KEY = "road-runner-best-v1";
 function readBest() {
@@ -39,6 +40,7 @@ export default function GameCanvas() {
   const jump = () => gameRef.current?.jump();
   const togglePause = () => gameRef.current?.togglePause();
   const restart = () => gameRef.current?.restart();
+  const handleBlink = useCallback(() => gameRef.current?.jump(), []);
 
   return <section className="game-shell" aria-label="Road Runner game">
     <div className="game-topbar">
@@ -47,6 +49,7 @@ export default function GameCanvas() {
     </div>
     <div className="canvas-wrap">
       <canvas ref={canvasRef} className="game-canvas" aria-label="Road Runner play area. Press space or arrow up to jump." tabIndex={0} onPointerDown={() => { if (status === "playing") jump(); }} />
+      <BlinkControls onBlink={handleBlink} gameStatus={status} />
       {status !== "playing" && <div className="game-overlay"><div className="overlay-card">
         <span className="overlay-kicker">{status === "over" ? "THAT'S A WRAP" : status === "paused" ? "TAKE YOUR TIME" : "READY, RUNNER?"}</span>
         <h2>{status === "over" ? "Oof. One more?" : status === "paused" ? "Catch your breath." : "Let's hit the road."}</h2>
