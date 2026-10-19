@@ -51,7 +51,6 @@ export default function GameCanvas() {
     </div>
     <div className="canvas-wrap">
       <canvas ref={canvasRef} className="game-canvas" aria-label="Road Runner play area. Press space or arrow up to jump." tabIndex={0} onPointerDown={() => { if (status === "playing") jump(); }} />
-      <BlinkControls onBlink={handleBlink} gameStatus={status} />
       {status !== "playing" && <div className="game-overlay"><div className="overlay-card">
         <span className="overlay-kicker">{status === "over" ? "THAT'S A WRAP" : status === "paused" ? "TAKE YOUR TIME" : "READY, RUNNER?"}</span>
         <h2>{status === "over" ? "Oof. One more?" : status === "paused" ? "Catch your breath." : "Let's hit the road."}</h2>
@@ -62,6 +61,7 @@ export default function GameCanvas() {
         {status === "ready" && <span className="overlay-hint">PRESS SPACE OR TAP TO JUMP</span>}
       </div></div>}
     </div>
+    <BlinkControls onBlink={handleBlink} gameStatus={status} />
     <div className="game-controls">
       <div className="controls-copy"><span className="controls-label">CONTROLS</span><span><kbd>SPACE</kbd> / <kbd>↑</kbd> jump <span className="control-divider">·</span> <kbd>ESC</kbd> pause</span></div>
       <div className="control-buttons">
