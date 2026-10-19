@@ -1,39 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
-import { FaceLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 
-// Responsive blink detection: keep the original fast-spike path plus a normal blink path.
-// MediaPipe blink scores vary with camera, lighting, and face position. Use
-// a more tolerant two-eye threshold while still requiring both eyes to react.
-const BLINK_CLOSED_THRESHOLD = 0.30;
-// A partially opened eye may still have a moderate blink score; allow reopening
-// at a higher score so users do not need to open their eyes completely.
-const BLINK_OPEN_THRESHOLD = 0.30;
-const BLINK_ONE_EYE_SUPPORT_THRESHOLD = 0.22;
-const FAST_BLINK_DELTA = 0.12;
-const FAST_BLINK_MIN_PREV = 0.18;
-const FAST_BLINK_MIN_PEAK = 0.30;
-const JUMP_DEBOUNCE_MS = 220;
-// Face inference is expensive on phones. 12–15 checks/sec is enough to catch
-// a blink while leaving more CPU time for the game animation.
-const DETECTION_INTERVAL_MS = 160; // About 6 inference passes/sec to balance responsiveness and workload.
-const WASM_URL = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
-const MODEL_URL =
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+// Camera sampling stays lightweight; MediaPipe inference runs in the worker.
+const DETECTION_INTERVAL_MS = 160;
 
 export default function BlinkControls({ onBlink }) {
   const videoRef = useRef(null);
-  const detectorRef = useRef(null);
+  const workerRef = useRef(null);
+  const workerReadyRef = useRef(false);
+  const frameBusyRef = useRef(false);
   const frameRef = useRef(null);
   const streamRef = useRef(null);
   const onBlinkRef = useRef(onBlink);
   const lastVideoTimeRef = useRef(-1);
   const lastDetectionTimeRef = useRef(0);
-  const previousLeftRef = useRef(0);
-  const previousRightRef = useRef(0);
-  const lastJumpTimeRef = useRef(0);
-  const closedSinceRef = useRef(0);
-  const wasClosedRef = useRef(false);
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -65,8 +45,11 @@ export default function BlinkControls({ onBlink }) {
       frameRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      detectorRef.current?.close();
-      detectorRef.current = null;
+      workerRef.current?.postMessage({ type: "STOP" });
+      workerRef.current?.terminate();
+      workerRef.current = null;
+      workerReadyRef.current = false;
+      frameBusyRef.current = false;
     };
 
     async function startCamera() {
@@ -103,126 +86,76 @@ export default function BlinkControls({ onBlink }) {
         await video.play();
         if (cancelled) return;
 
-        setLoadingStage("Loading vision runtime…");
-        const vision = await Promise.race([
-          FilesetResolver.forVisionTasks(WASM_URL),
-          new Promise((_, reject) =>
-            window.setTimeout(
-              () => reject(new Error("Timed out loading MediaPipe runtime. Check the iPad internet connection or CDN access.")),
-              20000
-            )
-          ),
-        ]);
-        if (cancelled) return;
+        setLoadingStage("Starting background blink detection…");
+        const worker = new Worker(
+          new URL("./blinkDetection.worker.js", import.meta.url),
+          { type: "module" }
+        );
+        workerRef.current = worker;
+        worker.onmessage = (event) => {
+          if (cancelled || workerRef.current !== worker) return;
+          const message = event.data;
+          if (message?.type === "READY") {
+            workerReadyRef.current = true;
+            lastVideoTimeRef.current = -1;
+            lastDetectionTimeRef.current = 0;
+            frameBusyRef.current = false;
+            setStatus("ready");
+          } else if (message?.type === "BLINK_DETECTED") {
+            reportBlink();
+          } else if (message?.type === "FRAME_DONE") {
+            frameBusyRef.current = false;
+          } else if (message?.type === "FRAME_ERROR") {
+            console.warn("Blink frame processing failed:", message.message);
+          } else if (message?.type === "ERROR") {
+            setError(message.message || "Could not initialize blink detection.");
+            setStatus("error");
+            stopCamera();
+          }
+        };
+        worker.onerror = (event) => {
+          console.error("Blink worker error:", event.message);
+          if (!cancelled) {
+            setError("Background blink detection failed to start. Please try again.");
+            setStatus("error");
+            stopCamera();
+          }
+        };
+        worker.postMessage({ type: "INIT" });
 
-        setLoadingStage("Loading face model…");
-        const detector = await Promise.race([
-          FaceLandmarker.createFromOptions(vision, {
-            baseOptions: { modelAssetPath: MODEL_URL, delegate: "CPU" },
-            runningMode: "VIDEO",
-            numFaces: 1,
-            outputFaceBlendshapes: true,
-          }),
-          new Promise((_, reject) =>
-            window.setTimeout(
-              () => reject(new Error("Timed out loading the face model. The model download may be blocked or too slow on this iPad.")),
-              25000
-            )
-          ),
-        ]);
-        if (cancelled) {
-          detector.close();
-          return;
-        }
-        detectorRef.current = detector;
-
-        previousLeftRef.current = 0;
-        previousRightRef.current = 0;
-        lastVideoTimeRef.current = -1;
-        lastDetectionTimeRef.current = 0;
-        lastJumpTimeRef.current = 0;
-        closedSinceRef.current = 0;
-        wasClosedRef.current = false;
-        setStatus("ready");
-
-        const detect = () => {
+        const detect = async () => {
           if (cancelled) return;
           const currentVideo = videoRef.current;
-          const landmarker = detectorRef.current;
-
-          const frameNow = performance.now();
+          const now = performance.now();
           if (
+            workerReadyRef.current &&
+            !frameBusyRef.current &&
             currentVideo &&
-            landmarker &&
             currentVideo.readyState >= 2 &&
             currentVideo.currentTime !== lastVideoTimeRef.current &&
-            frameNow - lastDetectionTimeRef.current >= DETECTION_INTERVAL_MS
+            now - lastDetectionTimeRef.current >= DETECTION_INTERVAL_MS
           ) {
             lastVideoTimeRef.current = currentVideo.currentTime;
-            lastDetectionTimeRef.current = frameNow;
-            const result = landmarker.detectForVideo(currentVideo, frameNow);
-            const categories = result.faceBlendshapes?.[0]?.categories ?? [];
-            const left = categories.find((item) => item.categoryName === "eyeBlinkLeft")?.score ?? 0;
-            const right = categories.find((item) => item.categoryName === "eyeBlinkRight")?.score ?? 0;
-            const now = performance.now();
-            const previousLeft = previousLeftRef.current;
-            const previousRight = previousRightRef.current;
-            // The two eye scores are not always equal when the full face is
-            // visible. Accept a strong score from either eye when the other
-            // eye also shows a meaningful closure response.
-            const bothClosed =
-              (left >= BLINK_CLOSED_THRESHOLD && right >= BLINK_ONE_EYE_SUPPORT_THRESHOLD) ||
-              (right >= BLINK_CLOSED_THRESHOLD && left >= BLINK_ONE_EYE_SUPPORT_THRESHOLD);
-            const bothOpen = left <= BLINK_OPEN_THRESHOLD && right <= BLINK_OPEN_THRESHOLD;
-
-            // Save raw scores so a quick closure can trigger without smoothing delay.
-            previousLeftRef.current = left;
-            previousRightRef.current = right;
-
-            const fastBlink =
-              left >= FAST_BLINK_MIN_PEAK &&
-              right >= FAST_BLINK_MIN_PEAK &&
-              previousLeft <= FAST_BLINK_MIN_PREV &&
-              previousRight <= FAST_BLINK_MIN_PREV &&
-              left - previousLeft >= FAST_BLINK_DELTA &&
-              right - previousRight >= FAST_BLINK_DELTA;
-
-            if (
-              fastBlink &&
-              now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS
-            ) {
-              // Fast path: jump on the closure spike for minimal input delay.
-              lastJumpTimeRef.current = now;
-              wasClosedRef.current = true;
-              closedSinceRef.current = now;
-              reportBlink();
-            } else if (!wasClosedRef.current && bothClosed) {
-              wasClosedRef.current = true;
-              closedSinceRef.current = now;
-            } else if (wasClosedRef.current && bothOpen) {
-              // Normal path: trigger on reopening if the fast path didn't fire.
-              const closedFor = now - closedSinceRef.current;
-              wasClosedRef.current = false;
-              closedSinceRef.current = 0;
-
-              if (
-                closedFor > 0 &&
-                closedFor <= 700 &&
-                now - lastJumpTimeRef.current >= JUMP_DEBOUNCE_MS
-              ) {
-                lastJumpTimeRef.current = now;
-                reportBlink();
-              } else if (closedFor > 700) {
-                wasClosedRef.current = false;
-                closedSinceRef.current = 0;
+            lastDetectionTimeRef.current = now;
+            frameBusyRef.current = true;
+            try {
+              const bitmap = await createImageBitmap(currentVideo);
+              if (cancelled || workerRef.current !== worker) {
+                bitmap.close();
+                frameBusyRef.current = false;
+              } else {
+                worker.postMessage({ type: "FRAME", bitmap, timestamp: now }, [bitmap]);
               }
+            } catch (frameError) {
+              frameBusyRef.current = false;
+              console.warn("Could not copy camera frame for blink detection:", frameError);
             }
           }
-
           frameRef.current = requestAnimationFrame(detect);
         };
 
         frameRef.current = requestAnimationFrame(detect);
+
       } catch (err) {
         console.error("Blink control error:", err);
         if (!cancelled) {
