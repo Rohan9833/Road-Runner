@@ -53,9 +53,31 @@ async function initialize() {
   if (initializing || detectorReady || stopped) return;
   initializing = true;
   try {
+    self.postMessage({ type: "STATUS", status: "Preparing face-api.js worker environment…" });
+
+    // face-api.js 0.22.2 does not automatically recognize a Web Worker as a
+    // browser environment. Register the worker's supported canvas/image types
+    // explicitly before loading models or running inference.
+    if (
+      typeof OffscreenCanvas === "undefined" ||
+      typeof ImageBitmap === "undefined" ||
+      typeof ImageData === "undefined"
+    ) {
+      throw new Error(
+        "This browser does not support the OffscreenCanvas/ImageBitmap APIs required for worker-based face detection."
+      );
+    }
+
+    faceapi.env.monkeyPatch({
+      Canvas: OffscreenCanvas,
+      Image: ImageBitmap,
+      ImageData,
+    });
+
     self.postMessage({ type: "STATUS", status: "Loading face-api.js models…" });
+
     // WebGL generally requires a DOM canvas and is not available in a Web Worker.
-    // Use the CPU backend explicitly so initialization does not crash in worker contexts.
+    // Use the CPU backend explicitly so inference can run without a DOM.
     await tf.setBackend("cpu");
     await tf.ready();
 
