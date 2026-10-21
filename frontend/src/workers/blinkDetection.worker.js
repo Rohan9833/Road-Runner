@@ -171,9 +171,23 @@ async function waitForOpenCV() {
 }
 
 async function loadCascade(url, filename) {
-  const response = await fetch(url);
+  console.info("[OpenCV blink worker] Downloading cascade", { filename, url });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  let response;
+  try {
+    response = await fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" });
+  } catch (error) {
+    const reason = error?.name === "AbortError"
+      ? "request timed out after 12 seconds"
+      : (error?.message || String(error));
+    throw new Error(`Could not fetch cascade ${filename}: ${reason}. Check CDN connectivity/CORS.`);
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!response.ok) throw new Error(`Could not download cascade (${response.status}): ${filename}`);
   const bytes = new Uint8Array(await response.arrayBuffer());
+  console.info("[OpenCV blink worker] Cascade downloaded", { filename, bytes: bytes.length });
   try { cv.FS_unlink(`/${filename}`); } catch {}
   cv.FS_createDataFile("/", filename, bytes, true, false, false);
   const classifier = new cv.CascadeClassifier();
@@ -198,6 +212,7 @@ async function initialize() {
     faceCascade = await loadCascade(FACE_CASCADE_URL, "road_runner_face.xml");
     console.info("[OpenCV blink worker] Face cascade loaded; loading eye cascade", EYE_CASCADE_URL);
     eyeCascade = await loadCascade(EYE_CASCADE_URL, "road_runner_eye_glasses.xml");
+    console.info("[OpenCV blink worker] Both cascades loaded successfully");
     canvas = new OffscreenCanvas(2, 2);
     context = canvas.getContext("2d", { willReadFrequently: true });
     initialized = true;
