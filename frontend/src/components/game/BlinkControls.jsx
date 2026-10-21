@@ -99,9 +99,11 @@ export default function BlinkControls({ onBlink }) {
           const message = event.data;
           switch (message?.type) {
             case "STATUS":
+              console.info("[BlinkControls] Worker status:", message.status);
               setLoadingStage(message.status || "Loading face models…");
               break;
             case "READY":
+              console.info("[BlinkControls] Worker ready:", { backend: message.backend });
               setStatus("ready");
               setLoadingStage("Detection active");
               setMetrics((current) => ({ ...current, backend: message.backend || "" }));
@@ -119,8 +121,13 @@ export default function BlinkControls({ onBlink }) {
               console.warn("[BlinkControls] Worker frame error:", message.message);
               break;
             case "ERROR":
-              console.error("[BlinkControls] Worker initialization failed:", message);
-              setError(message.message || "face-api.js could not initialize.");
+              console.error("[BlinkControls] Worker initialization failed:", {
+                stage: message.stage,
+                name: message.name,
+                message: message.message,
+                stack: message.stack,
+              });
+              setError(`Worker failed at ${message.stage || "unknown stage"}: ${message.message || "face-api.js could not initialize."}`);
               setStatus("error");
               stopResources();
               break;
