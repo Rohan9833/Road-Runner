@@ -53,88 +53,65 @@ function post(type, data = {}) {
 }
 
 async function waitForOpenCV() {
-  // Load OpenCV dynamically so package-resolution/runtime errors are caught
-  // inside the worker and returned to the UI instead of becoming a blank
-  // Worker.onerror event with no message.
+  // Bypass Vite's optimized dependency URL. The previous package import failed
+  // to fetch /node_modules/.vite/deps/... inside the module worker.
   if (!cvModule) {
-    console.info("[OpenCV blink worker] Dynamically importing @techstark/opencv-js");
+    console.info("[OpenCV blink worker] Loading standalone OpenCV.js with importScripts");
     try {
-      // Importing Vite's optimized dependency from a module worker fails on some
-      // LAN/mobile HTTPS setups ("Failed to fetch dynamically imported module").
-      // Use Vite's source entry instead, which is served as a normal module.
-      const importedModule = await import("@techstark/opencv-js/src");
-      cvModule = importedModule?.default ?? importedModule;
-      console.info("[OpenCV blink worker] OpenCV package import resolved", {
+      importScripts("https://docs.opencv.org/4.x/opencv.js");
+      cvModule = self.cv;
+      console.info("[OpenCV blink worker] Standalone script loaded", {
         moduleType: typeof cvModule,
         isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
         hasMat: Boolean(cvModule?.Mat),
         hasCascadeClassifier: Boolean(cvModule?.CascadeClassifier),
-        moduleKeys: (() => { try { return Object.keys(cvModule || {}).slice(0, 30); } catch (error) { return String(error); } })(),
       });
     } catch (error) {
-      console.error("[OpenCV blink worker] Package import failed", {
+      console.error("[OpenCV blink worker] importScripts failed", {
         name: error?.name, message: error?.message, stack: error?.stack, error,
       });
-      throw new Error(`Could not import @techstark/opencv-js/src: ${error?.message || String(error)}`);
+      throw new Error(`Could not load standalone OpenCV.js: ${error?.message || String(error)}`);
     }
   }
-
-  console.info("[OpenCV blink worker] Waiting for OpenCV runtime", {
-    isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
-    hasMat: Boolean(cvModule?.Mat),
-    hasCascadeClassifier: Boolean(cvModule?.CascadeClassifier),
-    hasRuntimeInitialized: Boolean(cvModule?.onRuntimeInitialized),
-  });
 
   if (cvModule && typeof cvModule.then === "function") {
     const resolved = await cvModule;
-    cv = resolved?.default || resolved || cvModule;
-    console.info("[OpenCV blink worker] OpenCV promise resolved", {
-      hasMat: Boolean(cv?.Mat),
-      hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
-      keys: (() => { try { return Object.keys(cv || {}).slice(0, 30); } catch { return []; } })(),
-    });
-    if (!cv?.Mat || !cv?.CascadeClassifier) {
-      throw new Error("OpenCV promise resolved but Mat/CascadeClassifier are missing.");
-    }
-    return;
-  }
-
-  if (cvModule?.Mat && cvModule?.CascadeClassifier) {
+    cv = resolved?.default || resolved || self.cv;
+    if (cv?.Mat && cv?.CascadeClassifier) return;
+  } else if (cvModule?.Mat && cvModule?.CascadeClassifier) {
     cv = cvModule;
-    console.info("[OpenCV blink worker] OpenCV runtime already initialized");
     return;
   }
 
   if (!cvModule || (typeof cvModule !== "object" && typeof cvModule !== "function")) {
-    throw new Error(`Unexpected OpenCV module export type: ${typeof cvModule}`);
+    throw new Error("OpenCV.js script loaded but did not expose a cv runtime.");
   }
 
   await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("OpenCV.js initialization timed out after 30000 ms.")), 30000);
+    const timeout = setTimeout(() => reject(new Error("OpenCV.js runtime initialization timed out after 30000 ms.")), 30000);
     const previousCallback = cvModule.onRuntimeInitialized;
     cvModule.onRuntimeInitialized = () => {
       clearTimeout(timeout);
       cv = cvModule;
-      console.info("[OpenCV blink worker] onRuntimeInitialized fired", {
+      console.info("[OpenCV blink worker] Standalone OpenCV runtime initialized", {
         hasMat: Boolean(cv?.Mat),
         hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
       });
       if (typeof previousCallback === "function") {
-        try { previousCallback(); } catch (error) { console.warn("[OpenCV blink worker] Previous runtime callback failed", error); }
+        try { previousCallback(); } catch (error) {
+          console.warn("[OpenCV blink worker] Previous runtime callback failed", error);
+        }
       }
       resolve();
     };
-    if (cvModule.onAbort == null) {
-      cvModule.onAbort = (reason) => {
-        console.error("[OpenCV blink worker] OpenCV runtime aborted", reason);
-        clearTimeout(timeout);
-        reject(new Error(`OpenCV.js runtime aborted: ${reason || "unknown reason"}`));
-      };
-    }
+    cvModule.onAbort = (reason) => {
+      clearTimeout(timeout);
+      reject(new Error(`OpenCV.js runtime aborted: ${reason || "unknown reason"}`));
+    };
   });
+
   if (!cv?.Mat || !cv?.CascadeClassifier) {
-    throw new Error("OpenCV runtime initialized without Mat/CascadeClassifier.");
+    throw new Error("OpenCV.js initialized without Mat/CascadeClassifier.");
   }
 }
 
