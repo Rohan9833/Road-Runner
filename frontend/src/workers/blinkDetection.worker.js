@@ -1,5 +1,4 @@
-import cvModule from "@techstark/opencv-js";
-
+let cvModule = null;
 let cv = null;
 const FACE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml";
 const EYE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml";
@@ -54,6 +53,29 @@ function post(type, data = {}) {
 }
 
 async function waitForOpenCV() {
+  // Load OpenCV dynamically so package-resolution/runtime errors are caught
+  // inside the worker and returned to the UI instead of becoming a blank
+  // Worker.onerror event with no message.
+  if (!cvModule) {
+    console.info("[OpenCV blink worker] Dynamically importing @techstark/opencv-js");
+    try {
+      const importedModule = await import("@techstark/opencv-js");
+      cvModule = importedModule?.default ?? importedModule;
+      console.info("[OpenCV blink worker] OpenCV package import resolved", {
+        moduleType: typeof cvModule,
+        isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
+        hasMat: Boolean(cvModule?.Mat),
+        hasCascadeClassifier: Boolean(cvModule?.CascadeClassifier),
+        moduleKeys: (() => { try { return Object.keys(cvModule || {}).slice(0, 30); } catch (error) { return String(error); } })(),
+      });
+    } catch (error) {
+      console.error("[OpenCV blink worker] Package import failed", {
+        name: error?.name, message: error?.message, stack: error?.stack, error,
+      });
+      throw new Error(`Could not import @techstark/opencv-js: ${error?.message || String(error)}`);
+    }
+  }
+
   console.info("[OpenCV blink worker] Waiting for OpenCV runtime", {
     isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
     hasMat: Boolean(cvModule?.Mat),
