@@ -1,4 +1,56 @@
-import cv from "@techstark/opencv-js";
+import cvModule from "@techstark/opencv-js";
+
+let cv = null;
+
+const FACE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml";
+const EYE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml";
+const SAMPLE_WINDOW = 7;
+const CALIBRATION_FRAMES = 24;
+const MIN_CLOSED_MS = 45;
+const MAX_CLOSED_MS = 800;
+const COOLDOWN_MS = 320;
+
+let initialized = false;
+let initializing = false;
+let stopped = false;
+let faceCascade = null;
+let eyeCascade = null;
+let canvas = null;
+let context = null;
+let samples = [];
+let calibrationFrames = 0;
+let baselineLeft = 0;
+let baselineRight = 0;
+let eyesWereOpen = false;
+let closedSince = 0;
+let lastBlinkAt = 0;
+let consecutiveClosed = 0;
+let busy = false;
+
+function post(type, data = {}) {
+  self.postMessage({ type, ...data });
+}
+
+async function waitForOpenCV() {
+  if (cvModule instanceof Promise) {
+    cv = await cvModule;
+    return;
+  }
+  if (cvModule?.Mat && cvModule?.CascadeClassifier) {
+    cv = cvModule;
+    return;
+  }
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("OpenCV.js initialization timed out.")), 30000);
+    cvModule.onRuntimeInitialized = () => {
+      clearTimeout(timeout);
+      cv = cvModule;
+      resolve();
+    };
+  });
+}mport cvModule from "@techstark/opencv-js";
+
+let cv = null;
 
 const FACE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml";
 const EYE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml";
