@@ -3,6 +3,58 @@ import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 
 const DETECTION_INTERVAL_MS = 100;
 
+const CASCADE_SOURCES = {
+  face: [
+    "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml",
+    "https://raw.githubusercontent.com/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml",
+  ],
+  eyes: [
+    "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml",
+    "https://raw.githubusercontent.com/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml",
+  ],
+};
+
+async function downloadCascadeInPage(urls, filename, setStage) {
+  let lastError;
+  for (const url of urls) {
+    const controller = new AbortController();
+    let timeoutId;
+    console.info("[OpenCV blink] Downloading model on main thread", { filename, url, timeoutMs: 10000 });
+    setStage(`Downloading ${filename}…`);
+    try {
+      const request = fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" });
+      const response = await Promise.race([
+        request,
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            controller.abort();
+            reject(new Error(`Timed out after 10 seconds fetching ${filename} from ${url}`));
+          }, 10000);
+        }),
+      ]);
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+      const body = await Promise.race([
+        response.arrayBuffer(),
+        new Promise((_, reject) => {
+          timeoutId = window.setTimeout(() => {
+            controller.abort();
+            reject(new Error(`Timed out reading ${filename} response body from ${url}`));
+          }, 10000);
+        }),
+      ]);
+      if (!body.byteLength) throw new Error(`Downloaded empty model: ${filename}`);
+      console.info("[OpenCV blink] Model downloaded on main thread", { filename, url, bytes: body.byteLength });
+      return body;
+    } catch (error) {
+      lastError = error;
+      console.warn("[OpenCV blink] Model source failed", { filename, url, message: error?.message || String(error) });
+    } finally {
+      if (timeoutId) window.clearTimeout(timeoutId);
+    }
+  }
+  throw new Error(`Could not download ${filename}: ${lastError?.message || String(lastError)}`);
+}
+
 export default function BlinkControls({ onBlink, gameStatus }) {
   const videoRef = useRef(null);
   const workerRef = useRef(null);
@@ -97,10 +149,17 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         if (cancelled) return;
 
         updateLoadingStage("Loading OpenCV.js and eye classifiers…");
+        // Download cascade files on the page thread. The worker's timer event loop
+        // was not firing while its fetch was pending, so it must not own networking.
+        const [faceCascadeBuffer, eyeCascadeBuffer] = await Promise.all([
+          downloadCascadeInPage(CASCADE_SOURCES.face, "road_runner_face.xml", updateLoadingStage),
+          downloadCascadeInPage(CASCADE_SOURCES.eyes, "road_runner_eye_tree_eyeglasses.xml", updateLoadingStage),
+        ]);
+        if (cancelled) return;
         // This is a classic worker because it loads standalone OpenCV.js via importScripts.
         // Serve the classic worker from /public so Vite does not inject /@vite/env
         // (which is an ES module and causes importScripts to throw in classic workers).
-        const workerUrl = "/blinkDetection.worker.js?v=debug5";
+        const workerUrl = "/blinkDetection.worker.js?v=models-from-main-20261021-1";
         const worker = new Worker(workerUrl, {
           name: "road-runner-opencv-blink",
         });
@@ -158,12 +217,12 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             stopCamera();
           }
         };
-        console.info("[OpenCV blink worker] Worker created; sending INIT", { build: "diagnostic-20261021-4",
+        console.info("[OpenCV blink worker] Worker created; sending INIT with model buffers", { build: "models-from-main-20261021-1", faceBytes: faceCascadeBuffer.byteLength, eyeBytes: eyeCascadeBuffer.byteLength,
           workerType: "classic",
           secureContext: window.isSecureContext,
           url: new URL(workerUrl, window.location.origin).href,
         });
-        worker.postMessage({ type: "INIT" });
+        worker.postMessage({ type: "INIT", faceCascadeBuffer, eyeCascadeBuffer }, [faceCascadeBuffer, eyeCascadeBuffer]);
         workerStartupTimer = window.setTimeout(() => {
           if (cancelled || workerReadyRef.current || workerRef.current !== worker) return;
           console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, uiStage: loadingStageRef.current, elapsedMs: 35000, workerReady: workerReadyRef.current, frameBusy: frameBusyRef.current, video: videoRef.current ? { readyState: videoRef.current.readyState, videoWidth: videoRef.current.videoWidth, videoHeight: videoRef.current.videoHeight, currentTime: videoRef.current.currentTime } : null, cameraTracks: streamRef.current?.getTracks().map((track) => ({ state: track.readyState, settings: track.getSettings() })) });
