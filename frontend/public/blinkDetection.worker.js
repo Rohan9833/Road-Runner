@@ -75,9 +75,29 @@ async function waitForOpenCV() {
   }
 
   if (cvModule && typeof cvModule.then === "function") {
-    const resolved = await cvModule;
+    console.info("[OpenCV blink worker] Waiting for OpenCV WASM runtime (maximum 30 seconds)");
+    let timeoutId;
+    let resolved;
+    try {
+      resolved = await Promise.race([
+        Promise.resolve(cvModule),
+        new Promise((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(
+            "OpenCV.js WASM runtime did not initialize within 30 seconds. The CDN build may not support this worker environment."
+          )), 30000);
+        }),
+      ]);
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+    }
     cv = resolved?.default || resolved || self.cv;
+    console.info("[OpenCV blink worker] OpenCV WASM runtime resolved", {
+      hasMat: Boolean(cv?.Mat),
+      hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
+      resolvedType: typeof resolved,
+    });
     if (cv?.Mat && cv?.CascadeClassifier) return;
+    throw new Error("OpenCV.js runtime resolved without Mat/CascadeClassifier.");
   } else if (cvModule?.Mat && cvModule?.CascadeClassifier) {
     cv = cvModule;
     return;
