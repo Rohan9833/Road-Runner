@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 
-const FRAME_INTERVAL_MS = 100;
+const FRAME_INTERVAL_MS = 50;
 
 export default function BlinkControls({ onBlink }) {
   const videoRef = useRef(null);
@@ -249,7 +249,7 @@ export default function BlinkControls({ onBlink }) {
           {metrics.faceFound ? (calibrationComplete ? "Face tracked · blink to jump" : `Calibrating eyes ${metrics.calibration || 0}/${metrics.calibrationRequired || 24}`) : "Looking for your face…"}
           {metrics.ear != null && (
             <span style={{ fontSize: 10, opacity: 0.72 }}>
-              EAR {metrics.ear} / {metrics.baseline ?? "—"} {metrics.backend ? `· ${metrics.backend}` : ""}
+              EAR {metrics.ear} / {metrics.baseline ?? "—"}{metrics.closeThreshold != null ? ` · close < ${metrics.closeThreshold}` : ""}{metrics.closed ? " · EYES CLOSED" : ""} {metrics.backend ? `· ${metrics.backend}` : ""}
             </span>
           )}
           {blinkNotice && <strong className="blink-detected-notice"><Eye size={12} /> {blinkNotice}</strong>}
