@@ -89,8 +89,8 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         if (cancelled) return;
 
         setLoadingStage("Loading OpenCV.js and eye classifiers…");
+        // This is a classic worker because it loads standalone OpenCV.js via importScripts.
         const worker = new Worker(new URL("../../workers/blinkDetection.worker.js", import.meta.url), {
-          type: "module",
           name: "road-runner-opencv-blink",
         });
         workerRef.current = worker;
@@ -143,7 +143,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           }
         };
         console.info("[OpenCV blink worker] Worker created; sending INIT", {
-          workerType: "module",
+          workerType: "classic",
           secureContext: window.isSecureContext,
           url: new URL("../../workers/blinkDetection.worker.js", import.meta.url).href,
         });
