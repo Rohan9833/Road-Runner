@@ -126,9 +126,9 @@ function processFrame(bitmap, timestamp) {
     // Fuse independent cues. Blendshapes can catch closure under glasses;
     // EAR can catch blinks when blendshape scores are weak. A single-eye
     // signal is accepted only when the other signal supports closure.
-    const closureEvidence = blendClosed || (earClosed && Math.max(left, right) >= 0.12);
+    const closureEvidence = blendClosed || earClosed;
     const reopeningEvidence = blendOpen || earOpen;
-    const openEvidence = blendOpen && (!ear || baselineEar == null || earOpen);
+    const openEvidence = blendOpen || earOpen;
 
     if (openEvidence) wasOpen = true;
 
