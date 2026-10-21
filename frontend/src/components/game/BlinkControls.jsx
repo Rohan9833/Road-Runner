@@ -90,7 +90,9 @@ export default function BlinkControls({ onBlink, gameStatus }) {
 
         setLoadingStage("Loading OpenCV.js and eye classifiers…");
         // This is a classic worker because it loads standalone OpenCV.js via importScripts.
-        const worker = new Worker(new URL("../../workers/blinkDetection.worker.js", import.meta.url), {
+        // Serve the classic worker from /public so Vite does not inject /@vite/env
+        // (which is an ES module and causes importScripts to throw in classic workers).
+        const worker = new Worker("/blinkDetection.worker.js", {
           name: "road-runner-opencv-blink",
         });
         workerRef.current = worker;
@@ -145,7 +147,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         console.info("[OpenCV blink worker] Worker created; sending INIT", {
           workerType: "classic",
           secureContext: window.isSecureContext,
-          url: new URL("../../workers/blinkDetection.worker.js", import.meta.url).href,
+          url: new URL("/blinkDetection.worker.js", window.location.origin).href,
         });
         worker.postMessage({ type: "INIT" });
 
