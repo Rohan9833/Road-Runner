@@ -305,6 +305,10 @@ function processFrame(bitmap, timestamp) {
 
     const face = largestRect(faces);
     const eyes = detectEyes(gray, face);
+    // Haar eye detection is not a reliable proxy for eyelid closure: it may
+    // stop detecting an eye during a normal head movement. Preserve the
+    // measured per-eye signals in the diagnostics and use a temporal closure
+    // transition only after a stable open-eye baseline.
     const openCount = Number(eyes[0].open) + Number(eyes[1].open);
     const eyeState = openCount === 2 ? "both-open" : openCount === 0 ? "both-not-detected" : "one-detected";
     if (processedFrameCount % 5 === 1 || eyeState !== lastLoggedEyeState) {
@@ -332,16 +336,26 @@ function processFrame(bitmap, timestamp) {
         const duration = timestamp - closedSince;
         if (duration >= MIN_CLOSED_MS && duration <= MAX_CLOSED_MS && timestamp - lastBlinkAt >= COOLDOWN_MS) {
           lastBlinkAt = timestamp;
+          console.info("[OpenCV blink worker] BLINK_DETECTED", { durationMs: Math.round(duration), frame: processedFrameCount });
           post("BLINK_DETECTED", { durationMs: Math.round(duration), confidence: 0.72 });
         }
         closedSince = 0;
       }
     } else if (eyesWereOpen && openCount === 0) {
       consecutiveClosed += 1;
-      if (!closedSince && consecutiveClosed >= 2) closedSince = timestamp;
-      if (closedSince && timestamp - closedSince > MAX_CLOSED_MS) closedSince = 0;
+      if (!closedSince && consecutiveClosed >= 2) {
+        closedSince = timestamp;
+        console.info("[OpenCV blink worker] Closure candidate started", { frame: processedFrameCount, timestamp });
+      }
+      if (closedSince && timestamp - closedSince > MAX_CLOSED_MS) {
+        console.info("[OpenCV blink worker] Closure candidate expired", { frame: processedFrameCount });
+        closedSince = 0;
+      }
     } else if (openCount === 1) {
-      consecutiveClosed = 0;
+      // One eye missing can be a brief blink, glasses glare, or pose change.
+      // Do not reset an active closure immediately; allow a short one-eye
+      // interruption while still requiring both eyes to return for a blink.
+      if (closedSince && timestamp - closedSince > MAX_CLOSED_MS) closedSince = 0;
     }
 
     post("METRICS", {
