@@ -22,32 +22,35 @@ async function downloadCascadeInPage(urls, filename, setStage) {
     console.info("[OpenCV blink] Downloading model on main thread", { filename, url, timeoutMs: 10000 });
     setStage(`Downloading ${filename}…`);
     try {
-      const request = fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" });
-      const response = await Promise.race([
-        request,
-        new Promise((_, reject) => {
-          timeoutId = window.setTimeout(() => {
-            controller.abort();
-            reject(new Error(`Timed out after 10 seconds fetching ${filename} from ${url}`));
-          }, 10000);
-        }),
-      ]);
-      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+      const download = async () => {
+        const response = await fetch(url, {
+          signal: controller.signal,
+          mode: "cors",
+          cache: "force-cache",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText} for ${url}`);
+        const body = await response.arrayBuffer();
+        if (!body.byteLength) throw new Error(`Downloaded empty model: ${filename}`);
+        return body;
+      };
       const body = await Promise.race([
-        response.arrayBuffer(),
+        download(),
         new Promise((_, reject) => {
           timeoutId = window.setTimeout(() => {
             controller.abort();
-            reject(new Error(`Timed out reading ${filename} response body from ${url}`));
+            reject(new Error(`Timed out after 10 seconds downloading ${filename} from ${url}`));
           }, 10000);
         }),
       ]);
-      if (!body.byteLength) throw new Error(`Downloaded empty model: ${filename}`);
-      console.info("[OpenCV blink] Model downloaded on main thread", { filename, url, bytes: body.byteLength });
+      console.info("[OpenCV blink] Model downloaded on main thread", {
+        filename, url, bytes: body.byteLength,
+      });
       return body;
     } catch (error) {
       lastError = error;
-      console.warn("[OpenCV blink] Model source failed", { filename, url, message: error?.message || String(error) });
+      console.warn("[OpenCV blink] Model source failed", {
+        filename, url, name: error?.name, message: error?.message || String(error),
+      });
     } finally {
       if (timeoutId) window.clearTimeout(timeoutId);
     }
