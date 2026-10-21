@@ -105,14 +105,12 @@ function detectEyes(gray, face) {
     }
     const roi = gray.roi(rect);
     const eyes = new cv.RectVector();
-    const weights = new cv.IntVector();
     try {
       eyeCascade.detectMultiScale(roi, eyes, 1.1, 2, 0, new cv.Size(8, 8), new cv.Size());
       found.push(eyes.size() > 0);
     } finally {
       roi.delete();
       eyes.delete();
-      weights.delete();
     }
   }
   return found;
@@ -129,7 +127,7 @@ function processFrame(bitmap, timestamp) {
     return;
   }
   busy = true;
-  let source, gray, faces, faceVector;
+  let source, gray, faces;
   try {
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
@@ -142,7 +140,6 @@ function processFrame(bitmap, timestamp) {
     // Mild blur stabilizes Haar results without hiding short closures.
     cv.equalizeHist(gray, gray);
     faces = new cv.RectVector();
-    faceVector = new cv.IntVector();
     faceCascade.detectMultiScale(gray, faces, 1.1, 4, 0, new cv.Size(48, 48), new cv.Size());
     if (faces.size() === 0) {
       post("METRICS", { face: false, eyes: 0, calibration: calibrationFrames, calibrationTotal: CALIBRATION_FRAMES });
@@ -201,7 +198,6 @@ function processFrame(bitmap, timestamp) {
     source?.delete();
     gray?.delete();
     faces?.delete();
-    faceVector?.delete();
     busy = false;
     post("FRAME_DONE");
   }
