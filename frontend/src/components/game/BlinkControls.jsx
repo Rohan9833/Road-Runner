@@ -29,6 +29,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
     let lastDetectionTime = 0;
     let pulseTimer;
     let noticeTimer;
+    let workerStartupTimer;
 
     const stopCamera = () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
@@ -39,6 +40,8 @@ export default function BlinkControls({ onBlink, gameStatus }) {
       workerRef.current = null;
       workerReadyRef.current = false;
       frameBusyRef.current = false;
+      if (workerStartupTimer) window.clearTimeout(workerStartupTimer);
+      workerStartupTimer = null;
       if (worker) {
         worker.postMessage({ type: "STOP" });
         worker.terminate();
@@ -104,6 +107,8 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             console.info("[OpenCV blink worker] Status", message);
             setLoadingStage(message.stage || "Preparing detector…");
           } else if (message?.type === "READY") {
+            if (workerStartupTimer) window.clearTimeout(workerStartupTimer);
+            workerStartupTimer = null;
             console.info("[OpenCV blink worker] READY", message);
             workerReadyRef.current = true;
             setStatus("ready");
@@ -122,6 +127,8 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             console.warn("[OpenCV blink worker] Frame failed:", message.message);
             frameBusyRef.current = false;
           } else if (message?.type === "ERROR") {
+            if (workerStartupTimer) window.clearTimeout(workerStartupTimer);
+            workerStartupTimer = null;
             setError(`OpenCV setup failed: ${message.message || "Unknown error"}`);
             setStatus("error");
             stopCamera();
@@ -150,6 +157,13 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           url: new URL("/blinkDetection.worker.js", window.location.origin).href,
         });
         worker.postMessage({ type: "INIT" });
+        workerStartupTimer = window.setTimeout(() => {
+          if (cancelled || workerReadyRef.current || workerRef.current !== worker) return;
+          console.error("[OpenCV blink worker] Main-thread watchdog: OpenCV did not become ready within 35 seconds; terminating stalled worker.");
+          setError("OpenCV did not initialize within 35 seconds. Check the Console for WASM/CDN errors and try again.");
+          setStatus("error");
+          stopCamera();
+        }, 35000);
 
         const detect = async () => {
           if (cancelled) return;
