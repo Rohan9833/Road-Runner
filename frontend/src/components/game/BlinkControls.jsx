@@ -130,9 +130,19 @@ export default function BlinkControls({ onBlink }) {
         };
 
         worker.onerror = (event) => {
-          console.error("[BlinkControls] Worker error:", event.message, event.filename, event.lineno);
+          const detail =
+            event?.message ||
+            event?.error?.message ||
+            "The browser could not load the worker module or one of its dependencies.";
+          console.error("[BlinkControls] Worker crashed:", {
+            message: detail,
+            filename: event?.filename || "(unknown worker file)",
+            line: event?.lineno ?? "(unknown line)",
+            error: event?.error || null,
+          });
+          event?.preventDefault?.();
           if (!cancelled) {
-            setError("The blink-detection worker crashed. Check the browser console.");
+            setError(`Blink worker failed: ${detail}`);
             setStatus("error");
             stopResources();
           }
