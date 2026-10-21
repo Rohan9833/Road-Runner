@@ -24,7 +24,7 @@ let lastBlinkAt = 0;
 let consecutiveClosed = 0;
 let busy = false;
 
-console.info("[OpenCV blink worker] BUILD diagnostic-20261021-4 loaded", {
+console.info("[OpenCV blink worker] BUILD diagnostic-20261021-5 loaded", {
   moduleType: typeof cvModule,
   isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
   moduleKeys: (() => { try { return Object.keys(cvModule || {}).slice(0, 30); } catch (error) { return String(error); } })(),
