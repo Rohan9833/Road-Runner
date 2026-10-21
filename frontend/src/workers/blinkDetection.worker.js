@@ -23,6 +23,9 @@ let closedSince = 0;
 let lastBlinkAt = 0;
 let consecutiveClosed = 0;
 let busy = false;
+let processedFrameCount = 0;
+let noFaceFrameCount = 0;
+let lastLoggedEyeState = null;
 
 console.info("[OpenCV blink worker] BUILD diagnostic-20261021-4 loaded", {
   moduleType: typeof cvModule,
@@ -244,15 +247,26 @@ function detectEyes(gray, face) {
     new cv.Rect(x + Math.round(w * 0.50), eyeY, Math.min(halfW, gray.cols - x - Math.round(w * 0.50)), eyeH),
   ];
   return regions.map((rect) => {
-    if (rect.width < 8 || rect.height < 8) return false;
+    if (rect.width < 8 || rect.height < 8) {
+      return { open: false, count: 0, region: { x: rect.x, y: rect.y, width: rect.width, height: rect.height }, skipped: true };
+    }
     const roi = gray.roi(rect);
-    const eyes = new cv.RectVector();
+    const detected = new cv.RectVector();
     try {
-      eyeCascade.detectMultiScale(roi, eyes, 1.1, 2, 0, new cv.Size(8, 8), new cv.Size());
-      return eyes.size() > 0;
+      eyeCascade.detectMultiScale(roi, detected, 1.08, 1, 0, new cv.Size(8, 8), new cv.Size());
+      const count = detected.size();
+      return {
+        open: count > 0,
+        count,
+        region: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        boxes: Array.from({ length: Math.min(count, 5) }, (_, i) => {
+          const box = detected.get(i);
+          return { x: box.x, y: box.y, width: box.width, height: box.height };
+        }),
+      };
     } finally {
       roi.delete();
-      eyes.delete();
+      detected.delete();
     }
   });
 }
@@ -274,14 +288,41 @@ function processFrame(bitmap, timestamp) {
     cv.cvtColor(source, gray, cv.COLOR_RGBA2GRAY);
     cv.equalizeHist(gray, gray);
     faces = new cv.RectVector();
-    faceCascade.detectMultiScale(gray, faces, 1.1, 4, 0, new cv.Size(48, 48), new cv.Size());
+    faceCascade.detectMultiScale(gray, faces, 1.1, 3, 0, new cv.Size(40, 40), new cv.Size());
+    processedFrameCount += 1;
     if (faces.size() === 0) {
-      post("METRICS", { face: false, eyes: 0, calibration: calibrationFrames, calibrationTotal: CALIBRATION_FRAMES });
+      noFaceFrameCount += 1;
+      if (processedFrameCount % 10 === 1) {
+        console.debug("[OpenCV blink worker] FRAME DIAGNOSTIC: no face", {
+          frame: processedFrameCount, width: gray.cols, height: gray.rows,
+          faces: 0, calibratedFrames: calibrationFrames, eyesWereOpen,
+          consecutiveClosed, closedSince, timestamp,
+        });
+      }
+      post("METRICS", { face: false, eyes: 0, calibration: calibrationFrames, calibrationTotal: CALIBRATION_FRAMES, frame: processedFrameCount, noFaceFrames: noFaceFrameCount });
       return;
     }
 
-    const eyes = detectEyes(gray, largestRect(faces));
-    const openCount = Number(eyes[0]) + Number(eyes[1]);
+    const face = largestRect(faces);
+    const eyes = detectEyes(gray, face);
+    const openCount = Number(eyes[0].open) + Number(eyes[1].open);
+    const eyeState = openCount === 2 ? "both-open" : openCount === 0 ? "both-not-detected" : "one-detected";
+    if (processedFrameCount % 5 === 1 || eyeState !== lastLoggedEyeState) {
+      console.info("[OpenCV blink worker] FRAME DIAGNOSTIC", {
+        frame: processedFrameCount, faces: faces.size(),
+        face: { x: face.x, y: face.y, width: face.width, height: face.height },
+        leftEyeRegion: eyes[0], rightEyeRegion: eyes[1],
+        openCount, eyeState, eyesWereOpen, consecutiveClosed, closedSince,
+        calibrationFrames, timestamp,
+      });
+    }
+    if (eyeState !== lastLoggedEyeState) {
+      console.info("[OpenCV blink worker] EYE STATE TRANSITION", {
+        from: lastLoggedEyeState, to: eyeState, frame: processedFrameCount,
+        eyesWereOpen, consecutiveClosed, closedSince,
+      });
+      lastLoggedEyeState = eyeState;
+    }
 
     if (openCount === 2) {
       eyesWereOpen = true;
@@ -306,6 +347,9 @@ function processFrame(bitmap, timestamp) {
     post("METRICS", {
       face: true,
       eyes: openCount,
+      frame: processedFrameCount,
+      eyeDetectionCounts: eyes.map((eye) => eye.count),
+      eyeState,
       calibration: calibrationFrames,
       calibrationTotal: CALIBRATION_FRAMES,
       calibrated: calibrationFrames >= CALIBRATION_FRAMES,
