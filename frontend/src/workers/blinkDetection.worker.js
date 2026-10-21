@@ -21,6 +21,16 @@ let closed = false;
 let closedAt = 0;
 let lastBlinkAt = 0;
 let earHistory = [];
+let initStage = "worker script loaded";
+
+console.info("[FaceBlinkWorker] Script started", {
+  userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "(no navigator)",
+  hasOffscreenCanvas: typeof OffscreenCanvas !== "undefined",
+  hasImageBitmap: typeof ImageBitmap !== "undefined",
+  hasImageData: typeof ImageData !== "undefined",
+  hasFetch: typeof fetch === "function",
+  hasCreateImageBitmap: typeof createImageBitmap === "function",
+});
 
 function pointDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -53,6 +63,12 @@ async function initialize() {
   if (initializing || detectorReady || stopped) return;
   initializing = true;
   try {
+    initStage = "checking worker APIs";
+    console.info("[FaceBlinkWorker] INIT received; checking APIs", {
+      faceapiEnvType: typeof faceapi.env,
+      faceapiEnvKeys: (() => { try { return Object.keys(faceapi.env || {}); } catch (e) { return String(e); } })(),
+      tfVersion: tf?.version?.tfjs || "(unknown)",
+    });
     self.postMessage({ type: "STATUS", status: "Preparing face-api.js worker environment…" });
 
     // face-api.js 0.22.2 does not automatically recognize a Web Worker as a
@@ -68,12 +84,21 @@ async function initialize() {
       );
     }
 
+    initStage = "face-api.js environment monkeyPatch";
+    console.info("[FaceBlinkWorker] About to call faceapi.env.monkeyPatch", {
+      Canvas: OffscreenCanvas.name,
+      Image: ImageBitmap.name,
+      ImageData: ImageData.name,
+    });
     faceapi.env.monkeyPatch({
       Canvas: OffscreenCanvas,
       Image: ImageBitmap,
       ImageData,
     });
+    console.info("[FaceBlinkWorker] faceapi.env.monkeyPatch completed");
 
+    initStage = "TensorFlow CPU backend initialization";
+    console.info("[FaceBlinkWorker] face-api environment configured; initializing TensorFlow CPU backend");
     self.postMessage({ type: "STATUS", status: "Loading face-api.js models…" });
 
     // WebGL generally requires a DOM canvas and is not available in a Web Worker.
@@ -81,20 +106,37 @@ async function initialize() {
     await tf.setBackend("cpu");
     await tf.ready();
 
+    initStage = "loading TinyFaceDetector and FaceLandmark68Net models";
+    console.info("[FaceBlinkWorker] Loading models from", MODEL_URL);
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
     ]);
+    console.info("[FaceBlinkWorker] Both face models loaded successfully");
 
     detectorCanvas = new OffscreenCanvas(2, 2);
     detectorContext = detectorCanvas.getContext("2d", { willReadFrequently: true });
     if (!detectorContext) throw new Error("Could not create an OffscreenCanvas 2D context.");
 
+    initStage = "ready";
     detectorReady = true;
+    console.info("[FaceBlinkWorker] Initialization complete", { backend: tf.getBackend() });
     self.postMessage({ type: "READY", backend: tf.getBackend() });
   } catch (error) {
-    console.error("[FaceBlinkWorker] Initialization failed", error);
-    self.postMessage({ type: "ERROR", message: error?.message || "face-api.js could not initialize.", stack: error?.stack || "" });
+    console.error("[FaceBlinkWorker] Initialization failed", {
+      stage: initStage,
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      error,
+    });
+    self.postMessage({
+      type: "ERROR",
+      stage: initStage,
+      name: error?.name || "Error",
+      message: error?.message || "face-api.js could not initialize.",
+      stack: error?.stack || "",
+    });
   } finally {
     initializing = false;
   }
