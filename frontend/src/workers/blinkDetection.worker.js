@@ -84,18 +84,45 @@ async function initialize() {
       );
     }
 
-    initStage = "face-api.js environment monkeyPatch";
-    console.info("[FaceBlinkWorker] About to call faceapi.env.monkeyPatch", {
-      Canvas: OffscreenCanvas.name,
-      Image: ImageBitmap.name,
-      ImageData: ImageData.name,
-    });
-    faceapi.env.monkeyPatch({
+    initStage = "registering explicit face-api.js worker environment";
+    // face-api.js 0.22.2 auto-detects only a DOM browser or Node.js. A Web
+    // Worker is neither, so monkeyPatch() throws before it can apply overrides.
+    // Register the environment directly to bypass that unsupported auto-detection.
+    const WorkerImagePlaceholder = class WorkerImagePlaceholder {};
+    const WorkerVideoPlaceholder = class WorkerVideoPlaceholder {};
+    const workerEnvironment = {
       Canvas: OffscreenCanvas,
-      Image: ImageBitmap,
+      CanvasRenderingContext2D: OffscreenCanvasRenderingContext2D,
+      Image: WorkerImagePlaceholder,
       ImageData,
+      Video: WorkerVideoPlaceholder,
+      createCanvasElement: () => new OffscreenCanvas(1, 1),
+      createImageElement: () => new WorkerImagePlaceholder(),
+      createVideoElement: () => new WorkerVideoPlaceholder(),
+      fetch: globalThis.fetch.bind(globalThis),
+      readFile: async (path) => {
+        const response = await fetch(path);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch face-api asset: ${response.status} ${response.statusText} (${path})`);
+        }
+        return response.arrayBuffer();
+      },
+    };
+    console.info("[FaceBlinkWorker] Registering custom worker environment", {
+      availableEnvApi: typeof faceapi.env.setEnv,
+      canvas: workerEnvironment.Canvas.name,
+      context: workerEnvironment.CanvasRenderingContext2D.name,
+      hasFetch: typeof workerEnvironment.fetch === "function",
     });
-    console.info("[FaceBlinkWorker] faceapi.env.monkeyPatch completed");
+    if (typeof faceapi.env.setEnv !== "function") {
+      throw new Error("This face-api.js build does not expose env.setEnv; worker environment cannot be registered.");
+    }
+    faceapi.env.setEnv(workerEnvironment);
+    console.info("[FaceBlinkWorker] Custom worker environment registered", {
+      registeredCanvas: faceapi.env.getEnv().Canvas?.name,
+      registeredImageData: faceapi.env.getEnv().ImageData?.name,
+      hasFetch: typeof faceapi.env.getEnv().fetch === "function",
+    });
 
     initStage = "TensorFlow CPU backend initialization";
     console.info("[FaceBlinkWorker] face-api environment configured; initializing TensorFlow CPU backend");
