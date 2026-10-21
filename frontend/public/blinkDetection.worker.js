@@ -170,32 +170,58 @@ async function waitForOpenCV() {
   }
 }
 
-async function loadCascade(url, filename) {
-  console.info("[OpenCV blink worker] Downloading cascade", { filename, url });
+async function fetchWithTimeout(url, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
-  let response;
+  let timeoutId;
   try {
-    response = await fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" });
-  } catch (error) {
-    const reason = error?.name === "AbortError"
-      ? "request timed out after 12 seconds"
-      : (error?.message || String(error));
-    throw new Error(`Could not fetch cascade ${filename}: ${reason}. Check CDN connectivity/CORS.`);
+    return await Promise.race([
+      fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" }),
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`request timed out after ${timeoutMs}ms: ${url}`));
+        }, timeoutMs);
+      }),
+    ]);
   } finally {
-    clearTimeout(timeoutId);
+    if (timeoutId) clearTimeout(timeoutId);
   }
-  if (!response.ok) throw new Error(`Could not download cascade (${response.status}): ${filename}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  console.info("[OpenCV blink worker] Cascade downloaded", { filename, bytes: bytes.length });
-  try { cv.FS_unlink(`/${filename}`); } catch {}
-  cv.FS_createDataFile("/", filename, bytes, true, false, false);
-  const classifier = new cv.CascadeClassifier();
-  if (!classifier.load(filename)) {
-    classifier.delete();
-    throw new Error(`OpenCV could not load ${filename}`);
+}
+
+async function loadCascade(url, filename) {
+  const fallbackUrl = `https://raw.githubusercontent.com/opencv/opencv/4.x/data/haarcascades/${filename === "road_runner_face.xml" ? "haarcascade_frontalface_default.xml" : "haarcascade_eye.xml"}`;
+  const urls = [url, fallbackUrl];
+  let response = null;
+  let lastError = null;
+
+  for (const candidateUrl of urls) {
+    console.info("[OpenCV blink worker] Downloading cascade", { filename, url: candidateUrl });
+    try {
+      response = await fetchWithTimeout(candidateUrl, 10000);
+      if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (!bytes.length) throw new Error("The downloaded cascade file was empty.");
+      console.info("[OpenCV blink worker] Cascade downloaded", {
+        filename, url: candidateUrl, bytes: bytes.length,
+      });
+
+      const data = cv.FS_createDataFile("/", filename, bytes, true, false, false);
+      const classifier = new cv.CascadeClassifier();
+      const loaded = classifier.load(`/${filename}`);
+      if (!loaded) {
+        classifier.delete();
+        throw new Error(`OpenCV could not parse cascade file: ${filename}`);
+      }
+      return classifier;
+    } catch (error) {
+      lastError = error;
+      console.warn("[OpenCV blink worker] Cascade source failed; trying fallback", {
+        filename, url: candidateUrl, message: error?.message || String(error),
+      });
+    }
   }
-  return classifier;
+
+  throw new Error(`Could not load cascade ${filename} from either CDN. Last error: ${lastError?.message || String(lastError)}`);
 }
 
 async function initialize() {
