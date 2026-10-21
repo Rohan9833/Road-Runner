@@ -58,6 +58,16 @@ async function waitForOpenCV() {
   if (!cvModule) {
     console.info("[OpenCV blink worker] Loading standalone OpenCV.js with importScripts");
     try {
+      // Configure Emscripten before loading the script so its WASM file is
+      // fetched from the OpenCV CDN rather than the app's /play route.
+      self.Module = {
+        ...(self.Module || {}),
+        locateFile: (file) => new URL(file, "https://docs.opencv.org/4.x/").href,
+        printErr: (...args) => console.error("[OpenCV blink worker] Emscripten:", ...args),
+        onAbort: (reason) => console.error("[OpenCV blink worker] Emscripten aborted:", reason),
+        onRuntimeInitialized: () => console.info("[OpenCV blink worker] Emscripten runtime callback fired"),
+      };
+      console.info("[OpenCV blink worker] Configured WASM asset URL", self.Module.locateFile("opencv_js.wasm"));
       importScripts("https://docs.opencv.org/4.x/opencv.js");
       cvModule = self.cv;
       console.info("[OpenCV blink worker] Standalone script loaded", {
