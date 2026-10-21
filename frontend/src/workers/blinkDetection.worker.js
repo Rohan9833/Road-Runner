@@ -1,5 +1,8 @@
 let cvModule = null;
 let cv = null;
+let openCvRuntimeInitialized = false;
+let resolveOpenCvRuntime;
+const openCvRuntimePromise = new Promise((resolve) => { resolveOpenCvRuntime = resolve; });
 const FACE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_frontalface_default.xml";
 const EYE_CASCADE_URL = "https://cdn.jsdelivr.net/gh/opencv/opencv/4.x/data/haarcascades/haarcascade_eye_tree_eyeglasses.xml";
 const CALIBRATION_FRAMES = 24;
@@ -65,7 +68,19 @@ async function waitForOpenCV() {
         locateFile: (file) => new URL(file, "https://docs.opencv.org/4.x/").href,
         printErr: (...args) => console.error("[OpenCV blink worker] Emscripten:", ...args),
         onAbort: (reason) => console.error("[OpenCV blink worker] Emscripten aborted:", reason),
-        onRuntimeInitialized: () => console.info("[OpenCV blink worker] Emscripten runtime callback fired"),
+        onRuntimeInitialized: () => {
+          openCvRuntimeInitialized = true;
+          console.info("[OpenCV blink worker] Emscripten runtime callback fired", {
+            moduleType: typeof self.Module,
+            moduleHasMat: Boolean(self.Module?.Mat),
+            moduleHasCascadeClassifier: Boolean(self.Module?.CascadeClassifier),
+            cvType: typeof self.cv,
+            cvIsPromise: Boolean(self.cv && typeof self.cv.then === "function"),
+            cvHasMat: Boolean(self.cv?.Mat),
+            cvKeys: (() => { try { return Object.keys(self.cv || {}).slice(0, 20); } catch { return []; } })(),
+          });
+          resolveOpenCvRuntime(true);
+        },
       };
       console.info("[OpenCV blink worker] Configured WASM asset URL", self.Module.locateFile("opencv_js.wasm"));
       importScripts("https://docs.opencv.org/4.x/opencv.js");
@@ -87,32 +102,42 @@ async function waitForOpenCV() {
   if (cvModule && typeof cvModule.then === "function") {
     console.info("[OpenCV blink worker] Waiting for OpenCV WASM runtime (maximum 30 seconds)");
     let timeoutId;
-    let resolved;
+    let outcome;
     try {
-      resolved = await Promise.race([
-        Promise.resolve(cvModule),
+      outcome = await Promise.race([
+        Promise.resolve(cvModule).then((resolved) => ({ kind: "promise", resolved })),
+        openCvRuntimePromise.then(() => ({ kind: "runtime-callback" })),
         new Promise((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(
-            "OpenCV.js WASM runtime did not initialize within 30 seconds. The CDN build may not support this worker environment."
-          )), 30000);
+          timeoutId = setTimeout(() => reject(new Error("OpenCV.js runtime did not become usable within 30 seconds.")), 30000);
         }),
       ]);
     } finally {
       if (timeoutId) clearTimeout(timeoutId);
     }
-    cv = resolved?.default || resolved || self.cv;
-    console.info("[OpenCV blink worker] OpenCV WASM runtime resolved", {
+    const candidates = [
+      outcome.kind === "promise" ? outcome.resolved?.default || outcome.resolved : null,
+      self.cv,
+      self.Module,
+    ].filter(Boolean);
+    cv = candidates.find((candidate) => candidate?.Mat && candidate?.CascadeClassifier) || null;
+    console.info("[OpenCV blink worker] Runtime resolution result", {
+      outcome: outcome.kind,
+      runtimeCallbackFired: openCvRuntimeInitialized,
       hasMat: Boolean(cv?.Mat),
       hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
-      resolvedType: typeof resolved,
+      candidateDiagnostics: candidates.map((candidate, index) => ({
+        index, type: typeof candidate, isPromise: typeof candidate?.then === "function",
+        hasMat: Boolean(candidate?.Mat), hasCascadeClassifier: Boolean(candidate?.CascadeClassifier),
+      })),
     });
     if (cv?.Mat && cv?.CascadeClassifier) return;
-    throw new Error("OpenCV.js runtime resolved without Mat/CascadeClassifier.");
+    throw new Error(outcome.kind === "runtime-callback"
+      ? "OpenCV signaled runtime initialization, but neither cv nor Module exposed Mat/CascadeClassifier."
+      : "OpenCV.js promise resolved without Mat/CascadeClassifier.");
   } else if (cvModule?.Mat && cvModule?.CascadeClassifier) {
     cv = cvModule;
     return;
   }
-
   if (!cvModule || (typeof cvModule !== "object" && typeof cvModule !== "function")) {
     throw new Error("OpenCV.js script loaded but did not expose a cv runtime.");
   }
