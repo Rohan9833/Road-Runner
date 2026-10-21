@@ -22,6 +22,8 @@ let closed = false;
 let closedAt = 0;
 let lastBlinkAt = 0;
 let earHistory = [];
+let processedFrameCount = 0;
+let lastFrameDebugAt = 0;
 let initStage = "worker script loaded";
 
 console.info("[FaceBlinkWorker] Script started", {
@@ -189,6 +191,7 @@ async function processFrame(bitmap, timestamp) {
   let rgbTensor = null;
 
   try {
+    processedFrameCount += 1;
     detectorCanvas.width = bitmap.width;
     detectorCanvas.height = bitmap.height;
     detectorContext.drawImage(bitmap, 0, 0, bitmap.width, bitmap.height);
@@ -206,10 +209,18 @@ async function processFrame(bitmap, timestamp) {
 
     if (stopped) return;
     if (!detections.length) {
+      if (closed) console.warn("[FaceBlinkWorker] Face lost while eyes were marked closed; clearing blink state.");
       closed = false;
       closedAt = 0;
       earHistory = [];
-      self.postMessage({ type: "METRICS", faceFound: false, ear: null, baseline });
+      if (timestamp - lastFrameDebugAt >= 1000) {
+        lastFrameDebugAt = timestamp;
+        console.debug("[FaceBlinkWorker] Frame diagnostic: no face detected", {
+          processedFrameCount, width: bitmap.width, height: bitmap.height,
+          calibrationCount, baseline, faceScoreThreshold: FACE_SCORE_THRESHOLD,
+        });
+      }
+      self.postMessage({ type: "METRICS", faceFound: false, ear: null, baseline, processedFrameCount });
       return;
     }
 
@@ -217,13 +228,33 @@ async function processFrame(bitmap, timestamp) {
       current.detection.score > best.detection.score ? current : best
     );
     const rawEar = calculateEar(face.landmarks);
-    if (rawEar == null || !Number.isFinite(rawEar)) return;
+    if (rawEar == null || !Number.isFinite(rawEar)) {
+      console.warn("[FaceBlinkWorker] Face found but EAR calculation failed", {
+        processedFrameCount, leftEye: face.landmarks.getLeftEye(), rightEye: face.landmarks.getRightEye(),
+      });
+      return;
+    }
     const ear = smoothEar(rawEar);
+    if (timestamp - lastFrameDebugAt >= 1000) {
+      lastFrameDebugAt = timestamp;
+      console.debug("[FaceBlinkWorker] Frame diagnostic: face and eyes detected", {
+        processedFrameCount, faceScore: Number(face.detection.score.toFixed(3)),
+        rawEar: Number(rawEar.toFixed(4)), ear: Number(ear.toFixed(4)),
+        baseline: baseline == null ? null : Number(baseline.toFixed(4)),
+        calibrationCount, closed,
+      });
+    }
 
     if (calibrationCount < CALIBRATION_FRAMES) {
       calibrationCount += 1;
       calibrationEars.push(ear);
       calibrationMax = Math.max(calibrationMax, ear);
+      if (calibrationCount === 1 || calibrationCount === CALIBRATION_FRAMES) {
+        console.info("[FaceBlinkWorker] Calibration progress", {
+          calibrationCount, required: CALIBRATION_FRAMES, ear: Number(ear.toFixed(4)),
+          baseline: Number(baseline?.toFixed?.(4) ?? 0),
+        });
+      }
       // The maximum is easily inflated by landmark jitter. Use the median of
       // the open-eye samples so the baseline reflects typical eyes-open EAR.
       baseline = median(calibrationEars);
@@ -252,13 +283,31 @@ async function processFrame(bitmap, timestamp) {
     if (!closed && ear < closeThreshold) {
       closed = true;
       closedAt = timestamp;
+      console.info("[FaceBlinkWorker] EYE-CLOSURE TRANSITION", {
+        processedFrameCount, ear: Number(ear.toFixed(4)),
+        baseline: Number(baseline.toFixed(4)), closeThreshold: Number(closeThreshold.toFixed(4)),
+        faceScore: Number(face.detection.score.toFixed(3)),
+      });
     } else if (closed && ear >= reopenThreshold) {
       const duration = timestamp - closedAt;
       closed = false;
       closedAt = 0;
+      console.info("[FaceBlinkWorker] EYE-REOPEN TRANSITION", {
+        processedFrameCount, ear: Number(ear.toFixed(4)),
+        reopenThreshold: Number(reopenThreshold.toFixed(4)), durationMs: Math.round(duration),
+        cooldownRemainingMs: Math.max(0, Math.round(COOLDOWN_MS - (timestamp - lastBlinkAt))),
+      });
       if (duration >= MIN_BLINK_MS && duration <= MAX_BLINK_MS && timestamp - lastBlinkAt >= COOLDOWN_MS) {
         lastBlinkAt = timestamp;
+        console.info("[FaceBlinkWorker] BLINK DETECTED; posting event to main thread", {
+          processedFrameCount, durationMs: Math.round(duration), ear: Number(ear.toFixed(4)),
+        });
         self.postMessage({ type: "BLINK_DETECTED", duration, ear: Number(ear.toFixed(3)) });
+      } else {
+        console.warn("[FaceBlinkWorker] Closure rejected as blink", {
+          durationMs: Math.round(duration), minMs: MIN_BLINK_MS, maxMs: MAX_BLINK_MS,
+          cooldownMs: COOLDOWN_MS, sinceLastBlinkMs: Math.round(timestamp - lastBlinkAt),
+        });
       }
     }
 
@@ -266,7 +315,8 @@ async function processFrame(bitmap, timestamp) {
       type: "METRICS", faceFound: true, ear: Number(ear.toFixed(3)),
       baseline: Number(baseline.toFixed(3)), closeThreshold: Number(closeThreshold.toFixed(3)),
       reopenThreshold: Number(reopenThreshold.toFixed(3)), closed,
-      calibration: calibrationCount, calibrationRequired: CALIBRATION_FRAMES, backend: tf.getBackend(),
+      calibration: calibrationCount, calibrationRequired: CALIBRATION_FRAMES,
+      processedFrameCount, backend: tf.getBackend(),
     });
   } catch (error) {
     console.warn("[FaceBlinkWorker] Frame inference failed", error);
@@ -281,7 +331,10 @@ async function processFrame(bitmap, timestamp) {
 
 self.onmessage = (event) => {
   const data = event.data;
-  if (data?.type === "INIT") void initialize();
+  if (data?.type === "INIT") {
+    console.info("[FaceBlinkWorker] INIT message received");
+    void initialize();
+  }
   if (data?.type === "FRAME") void processFrame(data.bitmap, data.timestamp);
   if (data?.type === "RESET") {
     baseline = null; calibrationCount = 0; calibrationMax = 0; calibrationEars = [];
