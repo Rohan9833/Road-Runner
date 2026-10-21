@@ -17,6 +17,7 @@ let stopped = false;
 let baseline = null;
 let calibrationCount = 0;
 let calibrationMax = 0;
+let calibrationEars = [];
 let closed = false;
 let closedAt = 0;
 let lastBlinkAt = 0;
@@ -53,11 +54,19 @@ function calculateEar(landmarks) {
 }
 
 function smoothEar(value) {
-  // Do not median-filter EAR: a normal blink may last only one sampled frame,
-  // and a 3-frame median can erase that short eye-closure completely.
+  // Keep the raw EAR: median smoothing can erase short blink closures.
   earHistory.push(value);
   if (earHistory.length > 3) earHistory.shift();
   return value;
+}
+
+function median(values) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
 }
 
 async function initialize() {
@@ -213,8 +222,11 @@ async function processFrame(bitmap, timestamp) {
 
     if (calibrationCount < CALIBRATION_FRAMES) {
       calibrationCount += 1;
+      calibrationEars.push(ear);
       calibrationMax = Math.max(calibrationMax, ear);
-      baseline = calibrationMax;
+      // The maximum is easily inflated by landmark jitter. Use the median of
+      // the open-eye samples so the baseline reflects typical eyes-open EAR.
+      baseline = median(calibrationEars);
       self.postMessage({
         type: "METRICS", faceFound: true, ear: Number(ear.toFixed(3)),
         baseline: Number(baseline.toFixed(3)), calibration: calibrationCount,
@@ -231,8 +243,8 @@ async function processFrame(bitmap, timestamp) {
     // reduce the absolute EAR change, so detect a meaningful drop from this
     // player's calibrated open-eye baseline rather than relying on one fixed
     // EAR value.
-    const closeThreshold = Math.max(0.09, baseline * 0.78);
-    const reopenThreshold = Math.max(0.12, baseline * 0.90);
+    const closeThreshold = Math.max(0.075, baseline * 0.72);
+    const reopenThreshold = Math.max(0.105, baseline * 0.88);
 
     if (!closed && ear < closeThreshold) {
       closed = true;
@@ -268,7 +280,7 @@ self.onmessage = (event) => {
   if (data?.type === "INIT") void initialize();
   if (data?.type === "FRAME") void processFrame(data.bitmap, data.timestamp);
   if (data?.type === "RESET") {
-    baseline = null; calibrationCount = 0; calibrationMax = 0;
+    baseline = null; calibrationCount = 0; calibrationMax = 0; calibrationEars = [];
     closed = false; closedAt = 0; lastBlinkAt = 0; earHistory = [];
   }
   if (data?.type === "STOP") {
