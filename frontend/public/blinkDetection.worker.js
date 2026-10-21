@@ -206,8 +206,9 @@ async function loadCascade(url, filename) {
       // Timeout covers the entire operation: response headers, response body,
       // and classifier creation. Timing only fetch() leaves arrayBuffer() able
       // to hang indefinitely on a stalled connection.
+      console.info("[OpenCV blink worker] CASCADE TIMEOUT ARMING", { filename, timeoutMs: 10000, workerNow: performance.now() });
       const operation = (async () => {
-        console.debug("[OpenCV blink worker] CASCADE 2/4 WAITING FOR RESPONSE HEADERS", { filename, elapsedMs: Math.round(performance.now() - startedAt) });
+        console.info("[OpenCV blink worker] CASCADE 2/4 FETCH BEGIN", { filename, elapsedMs: Math.round(performance.now() - startedAt) });
         const response = await fetch(candidateUrl, {
           signal: controller.signal, mode: "cors", cache: "no-store",
         });
@@ -244,7 +245,7 @@ async function loadCascade(url, filename) {
       const classifier = await Promise.race([
         operation,
         new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
+          timeoutId = self.setTimeout(() => {
             console.error("[OpenCV blink worker] Cascade timeout fired", {
               filename, url: candidateUrl, elapsedMs: Math.round(performance.now() - startedAt),
               note: "No completion from fetch/body/parser before the 10-second deadline",
@@ -252,11 +253,14 @@ async function loadCascade(url, filename) {
             controller.abort();
             reject(new Error(`total download/parse operation timed out after 10 seconds: ${candidateUrl}`));
           }, 10000);
+          console.info("[OpenCV blink worker] CASCADE TIMEOUT ARMED", { filename, timeoutId, deadlineMs: 10000 });
         }),
       ]);
+      console.info("[OpenCV blink worker] CASCADE OPERATION COMPLETED", { filename, elapsedMs: Math.round(performance.now() - startedAt) });
       return classifier;
     } catch (error) {
       lastError = error;
+      console.error("[OpenCV blink worker] CASCADE OPERATION REJECTED", { filename, url: candidateUrl, elapsedMs: Math.round(performance.now() - startedAt), name: error?.name, message: error?.message || String(error) });
       console.warn("[OpenCV blink worker] Cascade source failed; trying fallback", {
         filename, url: candidateUrl, name: error?.name, message: error?.message || String(error),
       });
