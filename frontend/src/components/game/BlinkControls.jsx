@@ -12,6 +12,8 @@ export default function BlinkControls({ onBlink }) {
   const frameBusyRef = useRef(false);
   const lastVideoTimeRef = useRef(-1);
   const lastFrameAtRef = useRef(0);
+  const sentFrameCountRef = useRef(0);
+  const receivedMetricsCountRef = useRef(0);
 
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState("idle");
@@ -27,6 +29,10 @@ export default function BlinkControls({ onBlink }) {
   }, [onBlink]);
 
   const reportBlink = () => {
+    console.info("[BlinkControls] BLINK EVENT RECEIVED; updating count and invoking jump callback", {
+      currentCount: blinkCount,
+      callbackType: typeof onBlinkRef.current,
+    });
     setBlinkCount((count) => count + 1);
     setBlinkNotice("Blink detected");
     setBlinkPulse(true);
@@ -87,6 +93,10 @@ export default function BlinkControls({ onBlink }) {
         await video.play();
         if (cancelled) return;
 
+        console.info("[BlinkControls] Camera stream started", {
+          videoWidth: video.videoWidth, videoHeight: video.videoHeight,
+          readyState: video.readyState, tracks: stream.getVideoTracks().map((track) => track.getSettings()),
+        });
         setLoadingStage("Starting face-api.js worker…");
         const worker = new Worker(
           new URL("../../workers/blinkDetection.worker.js", import.meta.url),
@@ -109,9 +119,20 @@ export default function BlinkControls({ onBlink }) {
               setMetrics((current) => ({ ...current, backend: message.backend || "" }));
               break;
             case "METRICS":
+              receivedMetricsCountRef.current += 1;
+              if (receivedMetricsCountRef.current === 1 || receivedMetricsCountRef.current % 20 === 0) {
+                console.debug("[BlinkControls] Worker metrics received", {
+                  metricsMessages: receivedMetricsCountRef.current,
+                  faceFound: message.faceFound, ear: message.ear, baseline: message.baseline,
+                  closeThreshold: message.closeThreshold, reopenThreshold: message.reopenThreshold,
+                  closed: message.closed, calibration: message.calibration,
+                  processedFrameCount: message.processedFrameCount,
+                });
+              }
               setMetrics((current) => ({ ...current, ...message }));
               break;
             case "BLINK_DETECTED":
+              console.info("[BlinkControls] BLINK_DETECTED message received from worker", message);
               reportBlink();
               break;
             case "FRAME_DONE":
@@ -179,11 +200,23 @@ export default function BlinkControls({ onBlink }) {
                 bitmap.close();
                 frameBusyRef.current = false;
               } else {
+                sentFrameCountRef.current += 1;
+                if (sentFrameCountRef.current === 1 || sentFrameCountRef.current % 20 === 0) {
+                  console.debug("[BlinkControls] Sending camera frame to worker", {
+                    sentFrameCount: sentFrameCountRef.current,
+                    timestamp: Math.round(now),
+                    width: bitmap.width, height: bitmap.height,
+                    workerReady: status,
+                  });
+                }
                 worker.postMessage({ type: "FRAME", bitmap, timestamp: now }, [bitmap]);
               }
             } catch (frameError) {
               frameBusyRef.current = false;
-              console.warn("[BlinkControls] Could not copy camera frame:", frameError);
+              console.error("[BlinkControls] Could not copy/send camera frame:", {
+                sentFrameCount: sentFrameCountRef.current, name: frameError?.name,
+                message: frameError?.message, error: frameError,
+              });
             }
           }
 
