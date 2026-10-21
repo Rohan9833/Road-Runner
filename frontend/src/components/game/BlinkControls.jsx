@@ -1,19 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 
-// Camera sampling stays lightweight; MediaPipe inference runs in the worker.
-const DETECTION_INTERVAL_MS = 90;
+const DETECTION_INTERVAL_MS = 100;
 
-export default function BlinkControls({ onBlink }) {
+export default function BlinkControls({ onBlink, gameStatus }) {
   const videoRef = useRef(null);
   const workerRef = useRef(null);
-  const workerReadyRef = useRef(false);
-  const frameBusyRef = useRef(false);
-  const frameRef = useRef(null);
   const streamRef = useRef(null);
+  const frameRef = useRef(null);
+  const frameBusyRef = useRef(false);
+  const workerReadyRef = useRef(false);
   const onBlinkRef = useRef(onBlink);
-  const lastVideoTimeRef = useRef(-1);
-  const lastDetectionTimeRef = useRef(0);
   const [enabled, setEnabled] = useState(false);
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
@@ -21,35 +18,42 @@ export default function BlinkControls({ onBlink }) {
   const [blinkCount, setBlinkCount] = useState(0);
   const [blinkPulse, setBlinkPulse] = useState(false);
   const [blinkNotice, setBlinkNotice] = useState("");
+  const [metrics, setMetrics] = useState(null);
 
-  useEffect(() => {
-    onBlinkRef.current = onBlink;
-  }, [onBlink]);
-
-  // Show a small confirmation and notify the game to jump.
-  const reportBlink = () => {
-    setBlinkCount((count) => count + 1);
-    setBlinkNotice("Blink detected");
-    setBlinkPulse(true);
-    onBlinkRef.current?.();
-    window.setTimeout(() => setBlinkPulse(false), 350);
-    window.setTimeout(() => setBlinkNotice(""), 1400);
-  };
+  useEffect(() => { onBlinkRef.current = onBlink; }, [onBlink]);
 
   useEffect(() => {
     if (!enabled) return undefined;
     let cancelled = false;
+    let lastVideoTime = -1;
+    let lastDetectionTime = 0;
+    let pulseTimer;
+    let noticeTimer;
 
     const stopCamera = () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
-      workerRef.current?.postMessage({ type: "STOP" });
-      workerRef.current?.terminate();
+      const worker = workerRef.current;
       workerRef.current = null;
       workerReadyRef.current = false;
       frameBusyRef.current = false;
+      if (worker) {
+        worker.postMessage({ type: "STOP" });
+        worker.terminate();
+      }
+    };
+
+    const reportBlink = (message) => {
+      setBlinkCount((count) => count + 1);
+      setBlinkNotice(`Blink detected${message.durationMs ? ` (${message.durationMs} ms)` : ""}`);
+      setBlinkPulse(true);
+      onBlinkRef.current?.();
+      clearTimeout(pulseTimer);
+      clearTimeout(noticeTimer);
+      pulseTimer = window.setTimeout(() => setBlinkPulse(false), 350);
+      noticeTimer = window.setTimeout(() => setBlinkNotice(""), 1400);
     };
 
     async function startCamera() {
@@ -57,20 +61,18 @@ export default function BlinkControls({ onBlink }) {
         setStatus("loading");
         setLoadingStage("Requesting camera…");
         setError("");
+        setMetrics(null);
         if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error("Camera access requires HTTPS or localhost.");
         }
 
-        // Request camera access first so Safari/iPadOS can show its permission
-        // prompt immediately, before the MediaPipe model and WASM files load.
         const isMobile = window.matchMedia("(max-width: 650px)").matches;
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            // Keep the established camera resolution so blink scores remain reliable.
-            width: { ideal: isMobile ? 160 : 480 },
-            height: { ideal: isMobile ? 120 : 360 },
-            frameRate: { ideal: isMobile ? 15 : 24, max: isMobile ? 20 : 30 },
+            width: { ideal: isMobile ? 320 : 640 },
+            height: { ideal: isMobile ? 240 : 480 },
+            frameRate: { ideal: 20, max: 24 },
           },
           audio: false,
         });
@@ -86,73 +88,45 @@ export default function BlinkControls({ onBlink }) {
         await video.play();
         if (cancelled) return;
 
-        setLoadingStage("Starting background blink detection…");
-        console.info("[BlinkControls] Camera stream ready", {
-          width: video.videoWidth,
-          height: video.videoHeight,
-          currentTime: video.currentTime,
-          readyState: video.readyState,
-          tracks: stream.getVideoTracks().map((track) => ({
-            label: track.label,
-            readyState: track.readyState,
-            settings: track.getSettings?.(),
-          })),
+        setLoadingStage("Loading OpenCV.js and eye classifiers…");
+        const worker = new Worker(new URL("../../workers/blinkDetection.worker.js", import.meta.url), {
+          type: "module",
+          name: "road-runner-opencv-blink",
         });
-        const workerUrl = "/blinkDetection.worker.js";
-        console.info("[BlinkControls] Creating classic MediaPipe worker", {
-          workerUrl,
-          mediaPipePackageVersion: "1.1.1",
-          wasmUrl: "/mediapipe/wasm",
-          detectionIntervalMs: DETECTION_INTERVAL_MS,
-        });
-        const worker = new Worker(workerUrl);
         workerRef.current = worker;
-        console.info("[BlinkControls] Classic worker created", { type: "classic" });
+
         worker.onmessage = (event) => {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
-          if (message?.type !== "FRAME_DONE") {
-            console.info("[BlinkControls] Worker message", message);
-          }
-          if (message?.type === "READY") {
+          if (message?.type === "STATUS") {
+            setLoadingStage(message.stage || "Preparing detector…");
+          } else if (message?.type === "READY") {
             workerReadyRef.current = true;
-            lastVideoTimeRef.current = -1;
-            lastDetectionTimeRef.current = 0;
-            frameBusyRef.current = false;
             setStatus("ready");
+            setLoadingStage("OpenCV.js ready");
+          } else if (message?.type === "METRICS") {
+            setMetrics(message);
           } else if (message?.type === "BLINK_DETECTED") {
-            reportBlink();
+            reportBlink(message);
           } else if (message?.type === "FRAME_DONE") {
             frameBusyRef.current = false;
           } else if (message?.type === "FRAME_ERROR") {
-            console.error("[BlinkControls] Worker frame processing failed", message);
+            console.warn("[OpenCV blink worker] Frame failed:", message.message);
+            frameBusyRef.current = false;
           } else if (message?.type === "ERROR") {
-            console.error("[BlinkControls] Worker initialization reported an error", message);
-            setError(
-              `Worker init failed at ${message.stage || "unknown stage"}: ${message.message || "Unknown MediaPipe error"}`
-            );
+            setError(`OpenCV setup failed: ${message.message || "Unknown error"}`);
             setStatus("error");
             stopCamera();
           }
         };
         worker.onerror = (event) => {
-          console.error("[BlinkControls] Worker runtime error", {
-            message: event.message,
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno,
-            event,
-          });
+          console.error("[OpenCV blink worker] Runtime error:", event.message);
           if (!cancelled) {
-            setError("Background blink detection failed to start. Please try again.");
+            setError("OpenCV worker failed to start. Refresh and try again.");
             setStatus("error");
             stopCamera();
           }
         };
-        worker.onmessageerror = (event) => {
-          console.error("[BlinkControls] Worker message deserialization error", event);
-        };
-        console.info("[BlinkControls] Sending INIT to worker");
         worker.postMessage({ type: "INIT" });
 
         const detect = async () => {
@@ -162,13 +136,12 @@ export default function BlinkControls({ onBlink }) {
           if (
             workerReadyRef.current &&
             !frameBusyRef.current &&
-            currentVideo &&
-            currentVideo.readyState >= 2 &&
-            currentVideo.currentTime !== lastVideoTimeRef.current &&
-            now - lastDetectionTimeRef.current >= DETECTION_INTERVAL_MS
+            currentVideo?.readyState >= 2 &&
+            currentVideo.currentTime !== lastVideoTime &&
+            now - lastDetectionTime >= DETECTION_INTERVAL_MS
           ) {
-            lastVideoTimeRef.current = currentVideo.currentTime;
-            lastDetectionTimeRef.current = now;
+            lastVideoTime = currentVideo.currentTime;
+            lastDetectionTime = now;
             frameBusyRef.current = true;
             try {
               const bitmap = await createImageBitmap(currentVideo);
@@ -180,16 +153,13 @@ export default function BlinkControls({ onBlink }) {
               }
             } catch (frameError) {
               frameBusyRef.current = false;
-              console.warn("Could not copy camera frame for blink detection:", frameError);
+              console.warn("Could not copy camera frame:", frameError);
             }
           }
           frameRef.current = requestAnimationFrame(detect);
         };
-
         frameRef.current = requestAnimationFrame(detect);
-
       } catch (err) {
-        console.error("Blink control error:", err);
         if (!cancelled) {
           setError(
             err.name === "NotAllowedError"
@@ -205,6 +175,8 @@ export default function BlinkControls({ onBlink }) {
     startCamera();
     return () => {
       cancelled = true;
+      clearTimeout(pulseTimer);
+      clearTimeout(noticeTimer);
       stopCamera();
     };
   }, [enabled]);
@@ -214,6 +186,7 @@ export default function BlinkControls({ onBlink }) {
       setEnabled(false);
       setStatus("idle");
       setError("");
+      setMetrics(null);
     } else {
       setEnabled(true);
     }
@@ -232,7 +205,6 @@ export default function BlinkControls({ onBlink }) {
         <span>BLINK CONTROL</span>
         <span className="blink-widget-count">{blinkCount} BLINKS</span>
       </div>
-      {/* Keep the video playing for detection, but do not render a camera preview. */}
       <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
       {enabled && status === "loading" && (
         <div className="blink-event-status"><LoaderCircle size={12} className="blink-spinner" /> {loadingStage}</div>
@@ -242,17 +214,19 @@ export default function BlinkControls({ onBlink }) {
       )}
       {enabled && status === "ready" && (
         <div className="blink-event-status">
-          <span className="blink-status-dot" /> Detection active
+          <span className="blink-status-dot" />
+          {metrics?.face === false ? "Looking for face…" : metrics?.eyes === 2 ? "Eyes open" : metrics?.eyes === 1 ? "One eye visible" : "Tracking eyes…"}
+          {metrics && !metrics.calibrated && <span> · calibrating {metrics.calibration || 0}/{metrics.calibrationTotal || 24}</span>}
           {blinkNotice && <strong className="blink-detected-notice"><Eye size={12} /> {blinkNotice}</strong>}
         </div>
       )}
       <div className="blink-widget-footer">
         <div className="blink-widget-copy">
           <strong>{statusLabel}</strong>
-          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink to jump" : "Detect blinks without preview"}</span>
+          <span>{status === "error" ? "Check camera permissions / connection" : enabled ? "Look toward the camera and blink" : "Jump by blinking"}</span>
         </div>
         <button type="button" className={`blink-toggle ${enabled ? "blink-toggle-on" : ""}`} onClick={toggleEnabled}>
-          {enabled ? <><EyeOff size={14} /> Turn off</> : <><Camera size={14} /> Enable</>}
+          {enabled ? <><EyeOff size={14} /> Turn off</> : <><Camera size={14} /> Enable blink</>}
         </button>
       </div>
     </aside>
