@@ -54,14 +54,10 @@ async function initialize() {
   initializing = true;
   try {
     self.postMessage({ type: "STATUS", status: "Loading face-api.js models…" });
-    try {
-      await tf.setBackend("webgl");
-      await tf.ready();
-    } catch (webglError) {
-      console.warn("[FaceBlinkWorker] WebGL unavailable; using CPU backend.", webglError);
-      await tf.setBackend("cpu");
-      await tf.ready();
-    }
+    // WebGL generally requires a DOM canvas and is not available in a Web Worker.
+    // Use the CPU backend explicitly so initialization does not crash in worker contexts.
+    await tf.setBackend("cpu");
+    await tf.ready();
 
     await Promise.all([
       faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
