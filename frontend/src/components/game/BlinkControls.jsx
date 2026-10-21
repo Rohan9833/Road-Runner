@@ -15,6 +15,12 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [loadingStage, setLoadingStage] = useState("Waiting for camera…");
+  const loadingStageRef = useRef("Waiting for camera…");
+  const updateLoadingStage = (stage) => {
+    loadingStageRef.current = stage;
+    console.info("[OpenCV blink worker] UI stage changed", { stage, at: performance.now() });
+    updateLoadingStage(stage);
+  };
   const [blinkCount, setBlinkCount] = useState(0);
   const [blinkPulse, setBlinkPulse] = useState(false);
   const [blinkNotice, setBlinkNotice] = useState("");
@@ -62,7 +68,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
     async function startCamera() {
       try {
         setStatus("loading");
-        setLoadingStage("Requesting camera…");
+        updateLoadingStage("Requesting camera…");
         setError("");
         setMetrics(null);
         if (!navigator.mediaDevices?.getUserMedia) {
@@ -70,6 +76,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         }
 
         const isMobile = window.matchMedia("(max-width: 650px)").matches;
+        console.info("[OpenCV blink worker] Requesting camera permission");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
@@ -84,18 +91,21 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           return;
         }
         streamRef.current = stream;
+        console.info("[OpenCV blink worker] Camera permission granted", { tracks: stream.getTracks().map((track) => ({ kind: track.kind, label: track.label, state: track.readyState, settings: track.getSettings() })) });
 
         const video = videoRef.current;
         if (!video) throw new Error("Camera preview is unavailable.");
         video.srcObject = stream;
+        console.info("[OpenCV blink worker] Starting camera video", { readyState: video.readyState, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
         await video.play();
+        console.info("[OpenCV blink worker] Camera video playing", { readyState: video.readyState, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
         if (cancelled) return;
 
-        setLoadingStage("Loading OpenCV.js and eye classifiers…");
+        updateLoadingStage("Loading OpenCV.js and eye classifiers…");
         // This is a classic worker because it loads standalone OpenCV.js via importScripts.
         // Serve the classic worker from /public so Vite does not inject /@vite/env
         // (which is an ES module and causes importScripts to throw in classic workers).
-        const workerUrl = "/blinkDetection.worker.js?v=debug3";
+        const workerUrl = "/blinkDetection.worker.js?v=debug4";
         const worker = new Worker(workerUrl, {
           name: "road-runner-opencv-blink",
         });
@@ -106,14 +116,14 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           const message = event.data;
           if (message?.type === "STATUS") {
             console.info("[OpenCV blink worker] Status", message);
-            setLoadingStage(message.stage || "Preparing detector…");
+            updateLoadingStage(message.stage || "Preparing detector…");
           } else if (message?.type === "READY") {
             if (workerStartupTimer) window.clearTimeout(workerStartupTimer);
             workerStartupTimer = null;
             console.info("[OpenCV blink worker] READY", message);
             workerReadyRef.current = true;
             setStatus("ready");
-            setLoadingStage("OpenCV.js ready");
+            updateLoadingStage("OpenCV.js ready");
           } else if (message?.type === "METRICS") {
             if (message.face === false || message.eyes !== 2 || message.blinkState) {
               console.debug("[OpenCV blink worker] Metrics", message);
@@ -153,7 +163,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             stopCamera();
           }
         };
-        console.info("[OpenCV blink worker] Worker created; sending INIT", {
+        console.info("[OpenCV blink worker] Worker created; sending INIT", { build: "diagnostic-20261021-4",
           workerType: "classic",
           secureContext: window.isSecureContext,
           url: new URL(workerUrl, window.location.origin).href,
@@ -161,7 +171,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         worker.postMessage({ type: "INIT" });
         workerStartupTimer = window.setTimeout(() => {
           if (cancelled || workerReadyRef.current || workerRef.current !== worker) return;
-          console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, loadingStage, elapsedMs: 35000 });
+          console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, uiStage: loadingStageRef.current, elapsedMs: 35000, workerReady: workerReadyRef.current, cameraTracks: streamRef.current?.getTracks().map((track) => ({ state: track.readyState, settings: track.getSettings() })) });
           setError("OpenCV did not initialize within 35 seconds. Check the Console for WASM/CDN errors and try again.");
           setStatus("error");
           stopCamera();
