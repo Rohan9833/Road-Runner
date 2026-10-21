@@ -99,14 +99,20 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
           if (message?.type === "STATUS") {
+            console.info("[OpenCV blink worker] Status", message);
             setLoadingStage(message.stage || "Preparing detector…");
           } else if (message?.type === "READY") {
+            console.info("[OpenCV blink worker] READY", message);
             workerReadyRef.current = true;
             setStatus("ready");
             setLoadingStage("OpenCV.js ready");
           } else if (message?.type === "METRICS") {
+            if (message.face === false || message.eyes !== 2 || message.blinkState) {
+              console.debug("[OpenCV blink worker] Metrics", message);
+            }
             setMetrics(message);
           } else if (message?.type === "BLINK_DETECTED") {
+            console.info("[OpenCV blink worker] BLINK_DETECTED reached main thread", message);
             reportBlink(message);
           } else if (message?.type === "FRAME_DONE") {
             frameBusyRef.current = false;
@@ -120,13 +126,27 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           }
         };
         worker.onerror = (event) => {
-          console.error("[OpenCV blink worker] Runtime error:", event.message);
+          console.error("[OpenCV blink worker] Runtime error details:", {
+            message: event?.message || "(browser did not provide a message)",
+            filename: event?.filename || "(unknown worker file)",
+            lineno: event?.lineno ?? "(unknown line)",
+            colno: event?.colno ?? "(unknown column)",
+            errorName: event?.error?.name,
+            errorMessage: event?.error?.message,
+            errorStack: event?.error?.stack,
+            error: event?.error || null,
+          });
           if (!cancelled) {
             setError("OpenCV worker failed to start. Refresh and try again.");
             setStatus("error");
             stopCamera();
           }
         };
+        console.info("[OpenCV blink worker] Worker created; sending INIT", {
+          workerType: "module",
+          secureContext: window.isSecureContext,
+          url: new URL("../../workers/blinkDetection.worker.js", import.meta.url).href,
+        });
         worker.postMessage({ type: "INIT" });
 
         const detect = async () => {
