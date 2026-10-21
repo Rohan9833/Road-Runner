@@ -135,35 +135,33 @@ function processFrame(bitmap, timestamp) {
     if (wasOpen && closureEvidence) {
       closedFrames += 1;
       if (!closedSince && closedFrames >= REQUIRED_CLOSED_FRAMES) {
+        // Trigger on closure onset rather than waiting for reopening. This
+        // removes the largest source of perceived input delay.
         closedSince = timestamp;
+        if (timestamp - lastBlinkAt >= COOLDOWN_MS) {
+          lastBlinkAt = timestamp;
+          console.info("[BlinkWorker] BLINK_DETECTED (closure onset)", {
+            blendLeft: Number(left.toFixed(3)),
+            blendRight: Number(right.toFixed(3)),
+            ear: ear ? Number(ear.mean.toFixed(3)) : null,
+            baselineEar: baselineEar == null ? null : Number(baselineEar.toFixed(3)),
+            frame: frameCount,
+          });
+          self.postMessage({
+            type: "BLINK_DETECTED",
+            confidence: blendClosed && earClosed ? 0.95 : 0.78,
+            signals: { blendshape: blendClosed, ear: Boolean(earClosed) },
+          });
+        }
       }
     } else if (closedSince && reopeningEvidence) {
-      const duration = timestamp - closedSince;
-      const blink = duration >= MIN_CLOSED_MS &&
-        duration <= MAX_CLOSED_MS &&
-        timestamp - lastBlinkAt >= COOLDOWN_MS;
-      if (blink) {
-        lastBlinkAt = timestamp;
-        console.info("[BlinkWorker] BLINK_DETECTED", {
-          durationMs: Math.round(duration),
-          blendLeft: Number(left.toFixed(3)),
-          blendRight: Number(right.toFixed(3)),
-          ear: ear ? Number(ear.mean.toFixed(3)) : null,
-          baselineEar: baselineEar == null ? null : Number(baselineEar.toFixed(3)),
-          frame: frameCount,
-        });
-        self.postMessage({
-          type: "BLINK_DETECTED",
-          durationMs: Math.round(duration),
-          confidence: blendClosed && earClosed ? 0.95 : 0.78,
-          signals: { blendshape: blendClosed, ear: Boolean(earClosed) },
-        });
-      }
       closedSince = 0;
       closedFrames = 0;
+      wasOpen = true;
     } else if (closedSince && timestamp - closedSince > MAX_CLOSED_MS) {
       closedSince = 0;
       closedFrames = 0;
+      wasOpen = false;
     }
 
     previousLeft = left;
