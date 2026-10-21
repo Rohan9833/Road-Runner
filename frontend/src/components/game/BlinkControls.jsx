@@ -105,7 +105,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         // This is a classic worker because it loads standalone OpenCV.js via importScripts.
         // Serve the classic worker from /public so Vite does not inject /@vite/env
         // (which is an ES module and causes importScripts to throw in classic workers).
-        const workerUrl = "/blinkDetection.worker.js?v=debug4";
+        const workerUrl = "/blinkDetection.worker.js?v=debug5";
         const worker = new Worker(workerUrl, {
           name: "road-runner-opencv-blink",
         });
@@ -171,7 +171,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         worker.postMessage({ type: "INIT" });
         workerStartupTimer = window.setTimeout(() => {
           if (cancelled || workerReadyRef.current || workerRef.current !== worker) return;
-          console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, uiStage: loadingStageRef.current, elapsedMs: 35000, workerReady: workerReadyRef.current, cameraTracks: streamRef.current?.getTracks().map((track) => ({ state: track.readyState, settings: track.getSettings() })) });
+          console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, uiStage: loadingStageRef.current, elapsedMs: 35000, workerReady: workerReadyRef.current, frameBusy: frameBusyRef.current, video: videoRef.current ? { readyState: videoRef.current.readyState, videoWidth: videoRef.current.videoWidth, videoHeight: videoRef.current.videoHeight, currentTime: videoRef.current.currentTime } : null, cameraTracks: streamRef.current?.getTracks().map((track) => ({ state: track.readyState, settings: track.getSettings() })) });
           setError("OpenCV did not initialize within 35 seconds. Check the Console for WASM/CDN errors and try again.");
           setStatus("error");
           stopCamera();
