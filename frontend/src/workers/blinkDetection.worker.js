@@ -170,105 +170,26 @@ async function waitForOpenCV() {
   }
 }
 
-async function fetchWithTimeout(url, timeoutMs = 10000) {
-  const controller = new AbortController();
-  let timeoutId;
-  try {
-    return await Promise.race([
-      fetch(url, { signal: controller.signal, mode: "cors", cache: "force-cache" }),
-      new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error(`request timed out after ${timeoutMs}ms: ${url}`));
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+function loadCascadeFromBytes(buffer, filename) {
+  if (!(buffer instanceof ArrayBuffer) || buffer.byteLength === 0) {
+    throw new Error(`Missing or empty model buffer for ${filename}`);
   }
+  const bytes = new Uint8Array(buffer);
+  console.info("[OpenCV blink worker] Parsing preloaded cascade bytes", { filename, bytes: bytes.length });
+  const virtualPath = `/${filename}`;
+  try { cv.FS_unlink(virtualPath); } catch {}
+  cv.FS_createDataFile("/", filename, bytes, true, false, false);
+  const classifier = new cv.CascadeClassifier();
+  const loaded = classifier.load(virtualPath);
+  console.info("[OpenCV blink worker] Cascade XML parse completed", { filename, loaded });
+  if (!loaded) {
+    classifier.delete();
+    throw new Error(`OpenCV could not parse cascade file: ${filename}`);
+  }
+  return classifier;
 }
 
-async function loadCascade(url, filename) {
-  const fallbackUrl = `https://raw.githubusercontent.com/opencv/opencv/4.x/data/haarcascades/${filename === "road_runner_face.xml" ? "haarcascade_frontalface_default.xml" : "haarcascade_eye.xml"}`;
-  const urls = [url, fallbackUrl];
-  let lastError = null;
-
-  for (const candidateUrl of urls) {
-    const controller = new AbortController();
-    let timeoutId;
-    const startedAt = performance.now();
-    console.info("[OpenCV blink worker] CASCADE 1/4 REQUEST START", {
-      filename, url: candidateUrl, timeoutMs: 10000, online: self.navigator?.onLine,
-    });
-    post("STATUS", { stage: `Downloading ${filename}…` });
-
-    try {
-      // Timeout covers the entire operation: response headers, response body,
-      // and classifier creation. Timing only fetch() leaves arrayBuffer() able
-      // to hang indefinitely on a stalled connection.
-      const operation = (async () => {
-        console.debug("[OpenCV blink worker] CASCADE 2/4 WAITING FOR RESPONSE HEADERS", { filename, elapsedMs: Math.round(performance.now() - startedAt) });
-        const response = await fetch(candidateUrl, {
-          signal: controller.signal, mode: "cors", cache: "no-store",
-        });
-        console.info("[OpenCV blink worker] CASCADE 2/4 RESPONSE HEADERS RECEIVED", {
-          filename, status: response.status, ok: response.ok,
-          contentType: response.headers.get("content-type"),
-          contentLength: response.headers.get("content-length"),
-          elapsedMs: Math.round(performance.now() - startedAt),
-        });
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-        console.debug("[OpenCV blink worker] CASCADE 3/4 READING RESPONSE BODY", { filename });
-        const bytes = new Uint8Array(await response.arrayBuffer());
-        console.info("[OpenCV blink worker] CASCADE 3/4 RESPONSE BODY READ", { filename, bytes: bytes.length, elapsedMs: Math.round(performance.now() - startedAt) });
-        if (!bytes.length) throw new Error("The downloaded cascade file was empty.");
-
-        console.info("[OpenCV blink worker] Cascade bytes received", {
-          filename, url: candidateUrl, bytes: bytes.length,
-        });
-
-        const virtualPath = `/${filename}`;
-        try { cv.FS_unlink(virtualPath); } catch {}
-        cv.FS_createDataFile("/", filename, bytes, true, false, false);
-        console.debug("[OpenCV blink worker] CASCADE 4/4 PARSING XML", { filename });
-        const classifier = new cv.CascadeClassifier();
-        const loaded = classifier.load(virtualPath);
-        console.info("[OpenCV blink worker] CASCADE 4/4 XML PARSE COMPLETED", { filename, loaded, elapsedMs: Math.round(performance.now() - startedAt) });
-        if (!loaded) {
-          classifier.delete();
-          throw new Error(`OpenCV could not parse cascade file: ${filename}`);
-        }
-        return classifier;
-      })();
-
-      const classifier = await Promise.race([
-        operation,
-        new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
-            console.error("[OpenCV blink worker] Cascade timeout fired", {
-              filename, url: candidateUrl, elapsedMs: Math.round(performance.now() - startedAt),
-              note: "No completion from fetch/body/parser before the 10-second deadline",
-            });
-            controller.abort();
-            reject(new Error(`total download/parse operation timed out after 10 seconds: ${candidateUrl}`));
-          }, 10000);
-        }),
-      ]);
-      return classifier;
-    } catch (error) {
-      lastError = error;
-      console.warn("[OpenCV blink worker] Cascade source failed; trying fallback", {
-        filename, url: candidateUrl, name: error?.name, message: error?.message || String(error),
-      });
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-    }
-  }
-
-  throw new Error(`Could not load cascade ${filename} from either CDN. Last error: ${lastError?.message || String(lastError)}`);
-}
-
-async function initialize() {
+async function initialize(message = {}) {
   if (initialized || initializing) {
     console.debug("[OpenCV blink worker] INIT ignored", { initialized, initializing });
     return;
@@ -278,12 +199,9 @@ async function initialize() {
     console.info("[OpenCV blink worker] INIT received");
     post("STATUS", { stage: "Loading OpenCV.js…" });
     await waitForOpenCV();
-    console.info("[OpenCV blink worker] Runtime ready; loading face cascade", FACE_CASCADE_URL);
-    post("STATUS", { stage: "Loading face detector model…" });
-    faceCascade = await loadCascade(FACE_CASCADE_URL, "road_runner_face.xml");
-    console.info("[OpenCV blink worker] Face cascade loaded; loading eye cascade", EYE_CASCADE_URL);
-    post("STATUS", { stage: "Loading eye detector model…" });
-    eyeCascade = await loadCascade(EYE_CASCADE_URL, "road_runner_eye_glasses.xml");
+    console.info("[OpenCV blink worker] Runtime ready; parsing preloaded face and eye cascades");
+    faceCascade = loadCascadeFromBytes(message.faceCascadeBuffer, "road_runner_face.xml");
+    eyeCascade = loadCascadeFromBytes(message.eyeCascadeBuffer, "road_runner_eye_tree_eyeglasses.xml");
     console.info("[OpenCV blink worker] Both cascades loaded successfully");
     canvas = new OffscreenCanvas(2, 2);
     context = canvas.getContext("2d", { willReadFrequently: true });
@@ -411,7 +329,7 @@ self.onmessage = async (event) => {
   if (message.type !== "FRAME") console.debug("[OpenCV blink worker] Message received", { type: message.type });
   if (message.type === "INIT") {
     stopped = false;
-    await initialize();
+    await initialize(message);
   } else if (message.type === "FRAME") {
     processFrame(message.bitmap, message.timestamp || performance.now());
   } else if (message.type === "RESET") {
