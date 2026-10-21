@@ -59,7 +59,10 @@ async function waitForOpenCV() {
   if (!cvModule) {
     console.info("[OpenCV blink worker] Dynamically importing @techstark/opencv-js");
     try {
-      const importedModule = await import("@techstark/opencv-js");
+      // Importing Vite's optimized dependency from a module worker fails on some
+      // LAN/mobile HTTPS setups ("Failed to fetch dynamically imported module").
+      // Use Vite's source entry instead, which is served as a normal module.
+      const importedModule = await import("@techstark/opencv-js/src");
       cvModule = importedModule?.default ?? importedModule;
       console.info("[OpenCV blink worker] OpenCV package import resolved", {
         moduleType: typeof cvModule,
@@ -72,7 +75,7 @@ async function waitForOpenCV() {
       console.error("[OpenCV blink worker] Package import failed", {
         name: error?.name, message: error?.message, stack: error?.stack, error,
       });
-      throw new Error(`Could not import @techstark/opencv-js: ${error?.message || String(error)}`);
+      throw new Error(`Could not import @techstark/opencv-js/src: ${error?.message || String(error)}`);
     }
   }
 
