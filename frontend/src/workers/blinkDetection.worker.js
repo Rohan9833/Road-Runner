@@ -5,7 +5,7 @@ const MODEL_URL = "https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@0.2
 const INPUT_SIZE = 320;
 const FACE_SCORE_THRESHOLD = 0.25;
 const CALIBRATION_FRAMES = 24;
-const MIN_BLINK_MS = 35;
+const MIN_BLINK_MS = 0;
 const MAX_BLINK_MS = 750;
 const COOLDOWN_MS = 320;
 
@@ -243,8 +243,11 @@ async function processFrame(bitmap, timestamp) {
     // reduce the absolute EAR change, so detect a meaningful drop from this
     // player's calibrated open-eye baseline rather than relying on one fixed
     // EAR value.
-    const closeThreshold = Math.max(0.075, baseline * 0.72);
-    const reopenThreshold = Math.max(0.105, baseline * 0.88);
+    // The previous close threshold was too strict for the user's observed EAR
+    // (~0.274 with a ~0.315 baseline). Use a larger relative drop, while keeping
+    // reopening below the typical open-eye reading to avoid getting stuck closed.
+    const closeThreshold = Math.max(0.07, baseline * 0.82);
+    const reopenThreshold = Math.max(0.09, baseline * 0.86);
 
     if (!closed && ear < closeThreshold) {
       closed = true;
@@ -262,6 +265,7 @@ async function processFrame(bitmap, timestamp) {
     self.postMessage({
       type: "METRICS", faceFound: true, ear: Number(ear.toFixed(3)),
       baseline: Number(baseline.toFixed(3)), closeThreshold: Number(closeThreshold.toFixed(3)),
+      reopenThreshold: Number(reopenThreshold.toFixed(3)), closed,
       calibration: calibrationCount, calibrationRequired: CALIBRATION_FRAMES, backend: tf.getBackend(),
     });
   } catch (error) {
