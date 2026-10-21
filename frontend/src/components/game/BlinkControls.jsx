@@ -18,7 +18,6 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const loadingStageRef = useRef("Waiting for camera…");
   const updateLoadingStage = (stage) => {
     loadingStageRef.current = stage;
-    console.info("[OpenCV blink worker] UI stage changed", { stage, at: performance.now() });
     setLoadingStage(stage);
   };
   const [blinkCount, setBlinkCount] = useState(0);
@@ -76,7 +75,6 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         }
 
         const isMobile = window.matchMedia("(max-width: 650px)").matches;
-        console.info("[OpenCV blink worker] Requesting camera permission");
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
@@ -91,14 +89,11 @@ export default function BlinkControls({ onBlink, gameStatus }) {
           return;
         }
         streamRef.current = stream;
-        console.info("[OpenCV blink worker] Camera permission granted", { tracks: stream.getTracks().map((track) => ({ kind: track.kind, label: track.label, state: track.readyState, settings: track.getSettings() })) });
 
         const video = videoRef.current;
         if (!video) throw new Error("Camera preview is unavailable.");
         video.srcObject = stream;
-        console.info("[OpenCV blink worker] Starting camera video", { readyState: video.readyState, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
         await video.play();
-        console.info("[OpenCV blink worker] Camera video playing", { readyState: video.readyState, videoWidth: video.videoWidth, videoHeight: video.videoHeight });
         if (cancelled) return;
 
         updateLoadingStage("Loading OpenCV.js and eye classifiers…");
