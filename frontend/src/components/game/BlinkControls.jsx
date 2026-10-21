@@ -128,6 +128,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
             console.warn("[OpenCV blink worker] Frame failed:", message.message);
             frameBusyRef.current = false;
           } else if (message?.type === "ERROR") {
+            console.error("[OpenCV blink worker] Initialization ERROR received by UI", message);
             if (workerStartupTimer) window.clearTimeout(workerStartupTimer);
             workerStartupTimer = null;
             setError(`OpenCV setup failed: ${message.message || "Unknown error"}`);
@@ -160,7 +161,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
         worker.postMessage({ type: "INIT" });
         workerStartupTimer = window.setTimeout(() => {
           if (cancelled || workerReadyRef.current || workerRef.current !== worker) return;
-          console.error("[OpenCV blink worker] Main-thread watchdog: OpenCV did not become ready within 35 seconds; terminating stalled worker.");
+          console.error("[OpenCV blink worker] Main-thread watchdog fired", { workerUrl, loadingStage, elapsedMs: 35000 });
           setError("OpenCV did not initialize within 35 seconds. Check the Console for WASM/CDN errors and try again.");
           setStatus("error");
           stopCamera();
