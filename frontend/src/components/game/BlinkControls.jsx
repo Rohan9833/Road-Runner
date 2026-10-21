@@ -19,7 +19,7 @@ export default function BlinkControls({ onBlink, gameStatus }) {
   const updateLoadingStage = (stage) => {
     loadingStageRef.current = stage;
     console.info("[OpenCV blink worker] UI stage changed", { stage, at: performance.now() });
-    updateLoadingStage(stage);
+    setLoadingStage(stage);
   };
   const [blinkCount, setBlinkCount] = useState(0);
   const [blinkPulse, setBlinkPulse] = useState(false);
