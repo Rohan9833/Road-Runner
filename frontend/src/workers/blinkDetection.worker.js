@@ -22,27 +22,95 @@ let lastBlinkAt = 0;
 let consecutiveClosed = 0;
 let busy = false;
 
+console.info("[OpenCV blink worker] Script evaluated", {
+  moduleType: typeof cvModule,
+  isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
+  moduleKeys: (() => { try { return Object.keys(cvModule || {}).slice(0, 30); } catch (error) { return String(error); } })(),
+  hasOffscreenCanvas: typeof OffscreenCanvas !== "undefined",
+  hasFetch: typeof fetch === "function",
+});
+
+self.addEventListener("error", (event) => {
+  console.error("[OpenCV blink worker] Uncaught worker error", {
+    message: event.message,
+    filename: event.filename,
+    lineno: event.lineno,
+    colno: event.colno,
+    errorName: event.error?.name,
+    errorMessage: event.error?.message,
+    errorStack: event.error?.stack,
+  });
+});
+self.addEventListener("unhandledrejection", (event) => {
+  console.error("[OpenCV blink worker] Unhandled promise rejection", {
+    reason: event.reason?.message || String(event.reason),
+    stack: event.reason?.stack,
+    reason: event.reason,
+  });
+});
+
 function post(type, data = {}) {
   self.postMessage({ type, ...data });
 }
 
 async function waitForOpenCV() {
-  if (cvModule instanceof Promise) {
-    cv = await cvModule;
+  console.info("[OpenCV blink worker] Waiting for OpenCV runtime", {
+    isPromise: Boolean(cvModule && typeof cvModule.then === "function"),
+    hasMat: Boolean(cvModule?.Mat),
+    hasCascadeClassifier: Boolean(cvModule?.CascadeClassifier),
+    hasRuntimeInitialized: Boolean(cvModule?.onRuntimeInitialized),
+  });
+
+  if (cvModule && typeof cvModule.then === "function") {
+    const resolved = await cvModule;
+    cv = resolved?.default || resolved || cvModule;
+    console.info("[OpenCV blink worker] OpenCV promise resolved", {
+      hasMat: Boolean(cv?.Mat),
+      hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
+      keys: (() => { try { return Object.keys(cv || {}).slice(0, 30); } catch { return []; } })(),
+    });
+    if (!cv?.Mat || !cv?.CascadeClassifier) {
+      throw new Error("OpenCV promise resolved but Mat/CascadeClassifier are missing.");
+    }
     return;
   }
+
   if (cvModule?.Mat && cvModule?.CascadeClassifier) {
     cv = cvModule;
+    console.info("[OpenCV blink worker] OpenCV runtime already initialized");
     return;
   }
+
+  if (!cvModule || (typeof cvModule !== "object" && typeof cvModule !== "function")) {
+    throw new Error(`Unexpected OpenCV module export type: ${typeof cvModule}`);
+  }
+
   await new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => reject(new Error("OpenCV.js initialization timed out.")), 30000);
+    const timeout = setTimeout(() => reject(new Error("OpenCV.js initialization timed out after 30000 ms.")), 30000);
+    const previousCallback = cvModule.onRuntimeInitialized;
     cvModule.onRuntimeInitialized = () => {
       clearTimeout(timeout);
       cv = cvModule;
+      console.info("[OpenCV blink worker] onRuntimeInitialized fired", {
+        hasMat: Boolean(cv?.Mat),
+        hasCascadeClassifier: Boolean(cv?.CascadeClassifier),
+      });
+      if (typeof previousCallback === "function") {
+        try { previousCallback(); } catch (error) { console.warn("[OpenCV blink worker] Previous runtime callback failed", error); }
+      }
       resolve();
     };
+    if (cvModule.onAbort == null) {
+      cvModule.onAbort = (reason) => {
+        console.error("[OpenCV blink worker] OpenCV runtime aborted", reason);
+        clearTimeout(timeout);
+        reject(new Error(`OpenCV.js runtime aborted: ${reason || "unknown reason"}`));
+      };
+    }
   });
+  if (!cv?.Mat || !cv?.CascadeClassifier) {
+    throw new Error("OpenCV runtime initialized without Mat/CascadeClassifier.");
+  }
 }
 
 async function loadCascade(url, filename) {
@@ -60,19 +128,33 @@ async function loadCascade(url, filename) {
 }
 
 async function initialize() {
-  if (initialized || initializing) return;
+  if (initialized || initializing) {
+    console.debug("[OpenCV blink worker] INIT ignored", { initialized, initializing });
+    return;
+  }
   initializing = true;
   try {
+    console.info("[OpenCV blink worker] INIT received");
     post("STATUS", { stage: "Loading OpenCV.js…" });
     await waitForOpenCV();
+    console.info("[OpenCV blink worker] Runtime ready; loading face cascade", FACE_CASCADE_URL);
     faceCascade = await loadCascade(FACE_CASCADE_URL, "road_runner_face.xml");
+    console.info("[OpenCV blink worker] Face cascade loaded; loading eye cascade", EYE_CASCADE_URL);
     eyeCascade = await loadCascade(EYE_CASCADE_URL, "road_runner_eye_glasses.xml");
     canvas = new OffscreenCanvas(2, 2);
     context = canvas.getContext("2d", { willReadFrequently: true });
     initialized = true;
     post("READY", { backend: "OpenCV.js Haar cascades", calibrationFrames: CALIBRATION_FRAMES });
   } catch (error) {
-    post("ERROR", { stage: "initialize", message: error?.message || String(error) });
+    console.error("[OpenCV blink worker] Initialization failed", {
+      name: error?.name, message: error?.message, stack: error?.stack, error,
+    });
+    post("ERROR", {
+      stage: "initialize",
+      name: error?.name || "Error",
+      message: error?.message || String(error),
+      stack: error?.stack || "",
+    });
   } finally {
     initializing = false;
   }
@@ -182,6 +264,7 @@ function processFrame(bitmap, timestamp) {
 
 self.onmessage = async (event) => {
   const message = event.data || {};
+  if (message.type !== "FRAME") console.debug("[OpenCV blink worker] Message received", { type: message.type });
   if (message.type === "INIT") {
     stopped = false;
     await initialize();
