@@ -98,8 +98,8 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = "/blinkDetection.worker.js";
-        console.info("[BlinkControls] Creating classic MediaPipe worker", {
+        const workerUrl = "/blinkDetection.worker.js?v=multisignal-20261021-1";
+        console.info("[BlinkControls] Creating multi-signal MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
           wasmUrl: "/mediapipe/wasm",
