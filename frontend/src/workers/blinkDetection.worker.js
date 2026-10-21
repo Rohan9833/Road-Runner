@@ -53,10 +53,11 @@ function calculateEar(landmarks) {
 }
 
 function smoothEar(value) {
+  // Do not median-filter EAR: a normal blink may last only one sampled frame,
+  // and a 3-frame median can erase that short eye-closure completely.
   earHistory.push(value);
   if (earHistory.length > 3) earHistory.shift();
-  const sorted = [...earHistory].sort((a, b) => a - b);
-  return sorted[Math.floor(sorted.length / 2)];
+  return value;
 }
 
 async function initialize() {
@@ -226,8 +227,12 @@ async function processFrame(bitmap, timestamp) {
       baseline = Math.max(baseline * 0.985 + ear * 0.015, calibrationMax * 0.82);
     }
 
-    const closeThreshold = Math.max(0.085, baseline * 0.68);
-    const reopenThreshold = Math.max(0.115, baseline * 0.78);
+    // Use a more sensitive relative threshold. Glasses and camera angle can
+    // reduce the absolute EAR change, so detect a meaningful drop from this
+    // player's calibrated open-eye baseline rather than relying on one fixed
+    // EAR value.
+    const closeThreshold = Math.max(0.09, baseline * 0.78);
+    const reopenThreshold = Math.max(0.12, baseline * 0.90);
 
     if (!closed && ear < closeThreshold) {
       closed = true;
