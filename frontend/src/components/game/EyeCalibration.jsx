@@ -45,6 +45,7 @@ export default function EyeCalibration() {
   const previousClosedRef = useRef(false);
   const blinkCountRef = useRef(0);
   const lastBlinkAtRef = useRef(0);
+  const lastUiUpdateRef = useRef(0);
   const calibratedThresholdsRef = useRef({ left: 0, right: 0 });
   const [state, setState] = useState(initialCalibration);
   const [cameraReady, setCameraReady] = useState(false);
@@ -68,12 +69,15 @@ export default function EyeCalibration() {
     const now = message.timestamp || performance.now();
     const left = Number(message.leftEar) || 0;
     const right = Number(message.rightEar) || 0;
-    update({ facePresent: Boolean(message.facePresent), leftEar: left, rightEar: right });
+    if (now - lastUiUpdateRef.current >= 250) {
+      lastUiUpdateRef.current = now;
+      update({ facePresent: Boolean(message.facePresent), leftEar: left, rightEar: right });
+    }
 
     if (!message.facePresent || left <= 0 || right <= 0) {
       faceSeenSinceRef.current = 0;
       previousClosedRef.current = false;
-      if (["face", "open", "close", "reopen", "blinks"].includes(phaseRef.current)) {
+      if (["face", "open", "close", "reopen", "blinks"].includes(phaseRef.current) && now - lastUiUpdateRef.current < 250) {
         update({ message: "I can't see both eyes clearly. Face the camera and improve the lighting." });
       }
       return;
