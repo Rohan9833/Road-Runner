@@ -69,7 +69,8 @@ export default function EyeCalibration() {
     const now = message.timestamp || performance.now();
     const left = Number(message.leftEar) || 0;
     const right = Number(message.rightEar) || 0;
-    if (now - lastUiUpdateRef.current >= 250) {
+    const shouldUpdateUi = now - lastUiUpdateRef.current >= 250;
+    if (shouldUpdateUi) {
       lastUiUpdateRef.current = now;
       update({ facePresent: Boolean(message.facePresent), leftEar: left, rightEar: right });
     }
@@ -77,7 +78,7 @@ export default function EyeCalibration() {
     if (!message.facePresent || left <= 0 || right <= 0) {
       faceSeenSinceRef.current = 0;
       previousClosedRef.current = false;
-      if (["face", "open", "close", "reopen", "blinks"].includes(phaseRef.current) && now - lastUiUpdateRef.current < 250) {
+      if (["face", "open", "close", "reopen", "blinks"].includes(phaseRef.current) && shouldUpdateUi) {
         update({ message: "I can't see both eyes clearly. Face the camera and improve the lighting." });
       }
       return;
