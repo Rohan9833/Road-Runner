@@ -103,38 +103,6 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
   }
 
 
-  // A soft pixel-art rainbow drifts at the same pace as the clouds.
-  // Draw only during daytime so the night sky stays calm.
-  if (!isNight) {
-    const rainbowLoop = width + 360;
-    const rainbowX = ((width + 120 - cloudTravel * 0.72) % rainbowLoop + rainbowLoop) % rainbowLoop - 180;
-    const rainbowY = 172;
-    const rainbowWidth = 112;
-    const rainbowHeight = 76;
-    const rainbowColors = ["#e96b5b", "#f2a65a", "#f5d66f", "#6fbf83", "#6ba9df", "#9b83c9"];
-
-    ctx.save();
-    ctx.lineWidth = 5;
-    for (let i = 0; i < rainbowColors.length; i++) {
-      ctx.strokeStyle = rainbowColors[i];
-      ctx.beginPath();
-      ctx.arc(rainbowX, rainbowY, rainbowHeight - i * 5, Math.PI, Math.PI * 2);
-      ctx.stroke();
-    }
-    // Mask the lower half so the rainbow reads as an arch.
-    ctx.fillStyle = skyColor;
-    ctx.fillRect(rainbowX - rainbowWidth - 8, rainbowY, rainbowWidth * 2 + 16, rainbowHeight + 8);
-    // Redraw the colored arch with clean concentric arcs.
-    for (let i = rainbowColors.length - 1; i >= 0; i--) {
-      ctx.strokeStyle = rainbowColors[i];
-      ctx.lineWidth = 5;
-      ctx.beginPath();
-      ctx.arc(rainbowX, rainbowY, rainbowHeight - i * 5, Math.PI, Math.PI * 2);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
 
   ctx.fillStyle = groundColor;
   ctx.fillRect(0, groundY, width, height - groundY);
