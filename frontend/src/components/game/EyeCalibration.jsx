@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Camera, CheckCircle2, CircleAlert, Eye, LoaderCircle, ScanFace } from "lucide-react";
 import GameCanvas from "./GameCanvas.jsx";
 
-const FRAME_INTERVAL_MS = 85;
+const FRAME_INTERVAL_MS = 35;
 const OPEN_CAPTURE_MS = 2200;
 const CLOSED_CAPTURE_MS = 1100;
 const FACE_STABLE_MS = 900;
@@ -45,6 +45,7 @@ export default function EyeCalibration() {
   const previousClosedRef = useRef(false);
   const blinkCountRef = useRef(0);
   const lastBlinkAtRef = useRef(0);
+  const lastJumpTriggerAtRef = useRef(-Infinity);
   const lastUiUpdateRef = useRef(0);
   const calibratedThresholdsRef = useRef({ left: 0, right: 0 });
   const [state, setState] = useState(initialCalibration);
@@ -168,14 +169,16 @@ export default function EyeCalibration() {
       const thresholds = calibratedThresholdsRef.current;
       const isClosed = left < thresholds.left && right < thresholds.right;
       if (isClosed && !previousClosedRef.current) {
+        // Trigger on the first confirmed closed-eye frame, rather than waiting
+        // for the eyes to reopen. This removes most of the perceived blink lag.
         previousClosedRef.current = true;
         lastBlinkAtRef.current = now;
-      } else if (!isClosed && previousClosedRef.current) {
-        previousClosedRef.current = false;
-        const duration = now - lastBlinkAtRef.current;
-        if (duration >= 35 && duration <= 900 && now - lastBlinkAtRef.current > 0) {
+        if (now - lastJumpTriggerAtRef.current >= 260) {
+          lastJumpTriggerAtRef.current = now;
           blinkHandlerRef.current?.();
         }
+      } else if (!isClosed && previousClosedRef.current) {
+        previousClosedRef.current = false;
       }
     }
   }, [setPhase, update]);
