@@ -99,36 +99,15 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
     }
   }
 
-  // Small flocks of birds made from simple V-shaped strokes, drifting across the sky.
-  // Their staggered positions and slight bobbing make them feel like birds in flight.
-  const birdGroups = [
-    { startX: 155, y: 118, count: 3, spacing: 13, scale: 1 },
-    { startX: 520, y: 91, count: 4, spacing: 12, scale: 0.78 },
-    { startX: 820, y: 165, count: 3, spacing: 14, scale: 0.68 },
-  ];
-
-  for (let g = 0; g < birdGroups.length; g++) {
-    const flock = birdGroups[g];
-    const travel = elapsed * (22 + g * 4);
-    const loopWidth = width + 160;
-    const baseX = ((flock.startX + travel) % loopWidth + loopWidth) % loopWidth - 70;
-    ctx.strokeStyle = isNight ? "#d4d9e2" : "#667064";
-    ctx.lineWidth = 2 * flock.scale;
-    ctx.lineCap = "round";
-
-    for (let b = 0; b < flock.count; b++) {
-      const x = baseX + b * flock.spacing * flock.scale;
-      const bob = Math.sin(elapsed * 3 + b * 0.8 + g) * 2;
-      const y = flock.y + bob;
-      const s = flock.scale;
-      // Two short angled strokes form a clean lowercase V silhouette.
-      ctx.beginPath();
-      ctx.moveTo(x - 5 * s, y - 2 * s);
-      ctx.lineTo(x, y + 2 * s);
-      ctx.lineTo(x + 5 * s, y - 2 * s);
-      ctx.stroke();
-    }
-  }
+  // One bird stays in a fixed spot in the sky.
+  ctx.strokeStyle = isNight ? "#d4d9e2" : "#667064";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.moveTo(292, 105);
+  ctx.lineTo(298, 110);
+  ctx.lineTo(304, 105);
+  ctx.stroke();
 
   ctx.fillStyle = groundColor;
   ctx.fillRect(0, groundY, width, height - groundY);
