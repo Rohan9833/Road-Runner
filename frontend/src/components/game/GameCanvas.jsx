@@ -51,7 +51,7 @@ export default function GameCanvas({ onRegisterBlinkHandler }) {
     if (status === "over") {
       const now = performance.now();
       // Three separate blinks within 1.8 seconds count as a restart gesture.
-      if (now - lastGameOverBlinkAtRef.current > 1800) {
+      if (now - lastGameOverBlinkAtRef.current > 1200) {
         gameOverBlinkCountRef.current = 0;
       }
       lastGameOverBlinkAtRef.current = now;
