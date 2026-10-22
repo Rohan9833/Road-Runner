@@ -311,6 +311,7 @@ export default function EyeCalibration() {
 
   return (
     <section className="eye-calibration" aria-label="Eye calibration">
+      {!showGame && <>
       <div className="eye-calibration-header">
         <div>
           <span className="eye-calibration-eyebrow"><ScanFace size={15} /> PERSONAL EYE CALIBRATION</span>
@@ -360,8 +361,8 @@ export default function EyeCalibration() {
         )}
       </div>
 
+      </>}
       {showGame && <div className="calibrated-game-area"><GameCanvas onRegisterBlinkHandler={registerBlinkHandler} /></div>}
-      {showGame && <div className="calibrated-camera-footer"><CheckCircle2 size={15} /> Eye calibration remains active for this session. <button type="button" onClick={() => { setShowGame(false); retryCalibration(); }}>Recalibrate</button></div>}
     </section>
   );
 }
