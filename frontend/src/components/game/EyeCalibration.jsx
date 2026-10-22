@@ -173,7 +173,8 @@ export default function EyeCalibration() {
         // for the eyes to reopen. This removes most of the perceived blink lag.
         previousClosedRef.current = true;
         lastBlinkAtRef.current = now;
-        if (now - lastJumpTriggerAtRef.current >= 260) {
+        // Add two frame intervals (2 × 35 ms) to the existing blink debounce.
+        if (now - lastJumpTriggerAtRef.current >= 330) {
           lastJumpTriggerAtRef.current = now;
           blinkHandlerRef.current?.();
         }
