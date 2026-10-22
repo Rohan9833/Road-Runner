@@ -64,14 +64,17 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
   // Sparse, varied cloud silhouettes stay in the upper sky instead of forming a repeating row.
   const cloudTravel = elapsed * 10;
   const clouds = [
-    { startX: 45, y: 83, width: 72, scale: 1 },
-    { startX: 190, y: 45, width: 36, scale: 0.52 },
-    { startX: 310, y: 119, width: 32, scale: 0.46 },
-    { startX: 435, y: 145, width: 52, scale: 0.78 },
-    { startX: 545, y: 72, width: 39, scale: 0.56 },
-    { startX: 690, y: 58, width: 88, scale: 1.12 },
-    { startX: 855, y: 130, width: 34, scale: 0.48 },
-    { startX: 975, y: 92, width: 42, scale: 0.6 },
+    { startX: 20, y: 83, width: 72, scale: 1 },
+    { startX: 125, y: 45, width: 36, scale: 0.52 },
+    { startX: 220, y: 119, width: 32, scale: 0.46 },
+    { startX: 320, y: 145, width: 52, scale: 0.78 },
+    { startX: 410, y: 72, width: 39, scale: 0.56 },
+    { startX: 510, y: 58, width: 88, scale: 1.12 },
+    { startX: 625, y: 130, width: 34, scale: 0.48 },
+    { startX: 720, y: 92, width: 42, scale: 0.6 },
+    { startX: 820, y: 43, width: 44, scale: 0.62 },
+    { startX: 930, y: 151, width: 38, scale: 0.54 },
+    { startX: 1050, y: 105, width: 50, scale: 0.7 },
   ];
 
   for (let i = 0; i < clouds.length; i++) {
@@ -97,6 +100,39 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
       ctx.fillRect(x + 4 * s, y + 4 * s, 80 * s, 9 * s);
       ctx.fillRect(x + 22 * s, y + 11 * s, 42 * s, 4 * s);
     }
+  }
+
+
+  // A soft pixel-art rainbow drifts at the same pace as the clouds.
+  // Draw only during daytime so the night sky stays calm.
+  if (!isNight) {
+    const rainbowLoop = width + 360;
+    const rainbowX = ((width + 120 - cloudTravel * 0.72) % rainbowLoop + rainbowLoop) % rainbowLoop - 180;
+    const rainbowY = 172;
+    const rainbowWidth = 112;
+    const rainbowHeight = 76;
+    const rainbowColors = ["#e96b5b", "#f2a65a", "#f5d66f", "#6fbf83", "#6ba9df", "#9b83c9"];
+
+    ctx.save();
+    ctx.lineWidth = 5;
+    for (let i = 0; i < rainbowColors.length; i++) {
+      ctx.strokeStyle = rainbowColors[i];
+      ctx.beginPath();
+      ctx.arc(rainbowX, rainbowY, rainbowHeight - i * 5, Math.PI, Math.PI * 2);
+      ctx.stroke();
+    }
+    // Mask the lower half so the rainbow reads as an arch.
+    ctx.fillStyle = skyColor;
+    ctx.fillRect(rainbowX - rainbowWidth - 8, rainbowY, rainbowWidth * 2 + 16, rainbowHeight + 8);
+    // Redraw the colored arch with clean concentric arcs.
+    for (let i = rainbowColors.length - 1; i >= 0; i--) {
+      ctx.strokeStyle = rainbowColors[i];
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(rainbowX, rainbowY, rainbowHeight - i * 5, Math.PI, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
 
