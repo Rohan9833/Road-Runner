@@ -64,9 +64,14 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
   // Sparse, varied cloud silhouettes stay in the upper sky instead of forming a repeating row.
   const cloudTravel = elapsed * 10;
   const clouds = [
-    { startX: 115, y: 83, width: 72, scale: 1 },
+    { startX: 45, y: 83, width: 72, scale: 1 },
+    { startX: 190, y: 45, width: 36, scale: 0.52 },
+    { startX: 310, y: 119, width: 32, scale: 0.46 },
     { startX: 435, y: 145, width: 52, scale: 0.78 },
+    { startX: 545, y: 72, width: 39, scale: 0.56 },
     { startX: 690, y: 58, width: 88, scale: 1.12 },
+    { startX: 855, y: 130, width: 34, scale: 0.48 },
+    { startX: 975, y: 92, width: 42, scale: 0.6 },
   ];
 
   for (let i = 0; i < clouds.length; i++) {
@@ -91,6 +96,37 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
       ctx.fillRect(x + 26 * s, y - 12 * s, 28 * s, 14 * s);
       ctx.fillRect(x + 4 * s, y + 4 * s, 80 * s, 9 * s);
       ctx.fillRect(x + 22 * s, y + 11 * s, 42 * s, 4 * s);
+    }
+  }
+
+  // Small flocks of birds made from simple V-shaped strokes, drifting across the sky.
+  // Their staggered positions and slight bobbing make them feel like birds in flight.
+  const birdGroups = [
+    { startX: 155, y: 118, count: 3, spacing: 13, scale: 1 },
+    { startX: 520, y: 91, count: 4, spacing: 12, scale: 0.78 },
+    { startX: 820, y: 165, count: 3, spacing: 14, scale: 0.68 },
+  ];
+
+  for (let g = 0; g < birdGroups.length; g++) {
+    const flock = birdGroups[g];
+    const travel = elapsed * (22 + g * 4);
+    const loopWidth = width + 160;
+    const baseX = ((flock.startX + travel) % loopWidth + loopWidth) % loopWidth - 70;
+    ctx.strokeStyle = isNight ? "#d4d9e2" : "#667064";
+    ctx.lineWidth = 2 * flock.scale;
+    ctx.lineCap = "round";
+
+    for (let b = 0; b < flock.count; b++) {
+      const x = baseX + b * flock.spacing * flock.scale;
+      const bob = Math.sin(elapsed * 3 + b * 0.8 + g) * 2;
+      const y = flock.y + bob;
+      const s = flock.scale;
+      // Two short angled strokes form a clean lowercase V silhouette.
+      ctx.beginPath();
+      ctx.moveTo(x - 5 * s, y - 2 * s);
+      ctx.lineTo(x, y + 2 * s);
+      ctx.lineTo(x + 5 * s, y - 2 * s);
+      ctx.stroke();
     }
   }
 
