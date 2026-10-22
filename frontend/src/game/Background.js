@@ -99,15 +99,25 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
     }
   }
 
-  // One bird stays in a fixed spot in the sky.
-  ctx.strokeStyle = isNight ? "#d4d9e2" : "#667064";
-  ctx.lineWidth = 2;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(292, 105);
-  ctx.lineTo(298, 110);
-  ctx.lineTo(304, 105);
-  ctx.stroke();
+  // A small, recognizable pixel-art bird perched in flight in the sky.
+  // Drawn with a rounded body, head, beak, wing, and tail rather than a V mark.
+  const birdColor = isNight ? "#d4d9e2" : "#667064";
+  ctx.fillStyle = birdColor;
+
+  // Body and head
+  ctx.fillRect(288, 105, 13, 5);
+  ctx.fillRect(294, 102, 6, 6);
+  // Beak
+  ctx.fillRect(300, 104, 5, 2);
+  // Raised wing
+  ctx.fillRect(291, 101, 4, 3);
+  ctx.fillRect(289, 99, 4, 3);
+  // Tail feathers
+  ctx.fillRect(285, 103, 4, 2);
+  ctx.fillRect(283, 101, 3, 2);
+  // Tiny eye
+  ctx.fillStyle = isNight ? "#18243d" : "#f8f0db";
+  ctx.fillRect(297, 103, 1, 1);
 
   ctx.fillStyle = groundColor;
   ctx.fillRect(0, groundY, width, height - groundY);
