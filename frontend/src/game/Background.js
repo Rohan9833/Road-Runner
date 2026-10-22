@@ -37,8 +37,25 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
       if (twinkle) ctx.fillRect(x, y, i % 3 === 0 ? 3 : 2, i % 3 === 0 ? 3 : 2);
     }
   } else {
-    ctx.fillRect(755, 49, 42, 42);
-    ctx.fillRect(768, 36, 16, 68);
+    // A clean, round pixel-art sun with short, evenly spaced rays.
+    const sunX = 775;
+    const sunY = 76;
+    ctx.fillStyle = "#e8b967";
+    ctx.fillRect(sunX - 24, sunY - 4, 7, 8);
+    ctx.fillRect(sunX + 17, sunY - 4, 7, 8);
+    ctx.fillRect(sunX - 4, sunY - 24, 8, 7);
+    ctx.fillRect(sunX - 4, sunY + 17, 8, 7);
+    ctx.fillRect(sunX - 17, sunY - 17, 6, 6);
+    ctx.fillRect(sunX + 11, sunY - 17, 6, 6);
+    ctx.fillRect(sunX - 17, sunY + 11, 6, 6);
+    ctx.fillRect(sunX + 11, sunY + 11, 6, 6);
+
+    ctx.fillStyle = "#f5cf83";
+    ctx.fillRect(sunX - 15, sunY - 15, 30, 30);
+    ctx.fillRect(sunX - 19, sunY - 9, 38, 18);
+    ctx.fillRect(sunX - 9, sunY - 19, 18, 38);
+    ctx.fillStyle = "#ffe3a2";
+    ctx.fillRect(sunX - 8, sunY - 10, 14, 4);
   }
 
   const hillOffset = (elapsed * speed * 0.11) % 230;
@@ -51,17 +68,36 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
     ctx.fillRect(x + 61, hillBaseY + 18, 88, 29);
   }
 
-  ctx.fillStyle = cloudColor;
-  for (let i = 0; i < 3; i++) {
-    const x = ((i * 355 - elapsed * 13) % (width + 130) + width + 130) % (width + 130) - 65;
-    const y = 78 + i * 48;
-    if (!isNight) {
-      ctx.fillRect(x, y, 58, 10);
-      ctx.fillRect(x + 13, y - 9, 32, 10);
-      ctx.fillRect(x + 6, y + 10, 42, 5);
-    } else if (i !== 1) {
-      ctx.fillRect(x, y, 48, 7);
-      ctx.fillRect(x + 11, y - 6, 25, 7);
+  // Sparse, varied cloud silhouettes stay in the upper sky instead of forming a repeating row.
+  const cloudTravel = elapsed * 10;
+  const clouds = [
+    { startX: 115, y: 83, width: 72, scale: 1 },
+    { startX: 435, y: 145, width: 52, scale: 0.78 },
+    { startX: 690, y: 58, width: 88, scale: 1.12 },
+  ];
+
+  for (let i = 0; i < clouds.length; i++) {
+    const cloud = clouds[i];
+    const loopWidth = width + 180;
+    const x = ((cloud.startX - cloudTravel * (i % 2 === 0 ? 1 : 0.72)) % loopWidth + loopWidth) % loopWidth - 90;
+    const y = cloud.y;
+    const s = cloud.scale;
+
+    ctx.fillStyle = isNight ? "#46566d" : "#fffaf0";
+    // Each cloud has its own silhouette and proportions.
+    if (i === 0) {
+      ctx.fillRect(x + 10 * s, y, 48 * s, 12 * s);
+      ctx.fillRect(x + 20 * s, y - 10 * s, 25 * s, 12 * s);
+      ctx.fillRect(x, y + 4 * s, 68 * s, 8 * s);
+    } else if (i === 1) {
+      ctx.fillRect(x + 8 * s, y, 38 * s, 9 * s);
+      ctx.fillRect(x + 18 * s, y - 8 * s, 18 * s, 10 * s);
+      ctx.fillRect(x, y + 3 * s, 52 * s, 6 * s);
+    } else {
+      ctx.fillRect(x + 14 * s, y, 58 * s, 13 * s);
+      ctx.fillRect(x + 26 * s, y - 12 * s, 28 * s, 14 * s);
+      ctx.fillRect(x + 4 * s, y + 4 * s, 80 * s, 9 * s);
+      ctx.fillRect(x + 22 * s, y + 11 * s, 42 * s, 4 * s);
     }
   }
 
