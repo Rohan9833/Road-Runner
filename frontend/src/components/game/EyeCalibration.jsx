@@ -226,12 +226,12 @@ export default function EyeCalibration() {
           if (message?.type === "READY") {
             setPhase("face", "Center your face in the frame and look straight at the camera.");
           } else if (message?.type === "FRAME_RESULT") {
-            frameBusyRef.current = false;
             handleFrame(message);
           } else if (message?.type === "FRAME_DONE") {
             frameBusyRef.current = false;
           } else if (message?.type === "ERROR") {
             update({ phase: "error", error: message.message || "Eye-tracking model failed to load." });
+            stopCamera();
           }
         };
         worker.onerror = () => update({ phase: "error", error: "Eye tracking crashed. Refresh the page and try again." });
@@ -266,6 +266,7 @@ export default function EyeCalibration() {
         };
         frameRef.current = requestAnimationFrame(detect);
       } catch (error) {
+        stopCamera();
         if (!cancelled) update({
           phase: "error",
           error: error?.name === "NotAllowedError"
