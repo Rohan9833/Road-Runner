@@ -27,7 +27,7 @@ const FRAME_DURATION = 0.095;
 
 // The final drawing box is the same for every frame. Each pose is fitted inside
 // it without stretching, and its feet share the same bottom baseline.
-const DRAW_WIDTH = 56;
+const DRAW_WIDTH = 64;
 const DRAW_HEIGHT = 72;
 const FOOT_PADDING = 2;
 
