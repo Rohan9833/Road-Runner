@@ -17,6 +17,8 @@ export function createGame(canvas, callbacks = {}) {
 
   let frame = 0, previousTime = 0, elapsed = 0, score = 0, speed = GAME.initialSpeed, spawnIn = 1.05;
   let state = "ready", destroyed = false, player = createPlayer(), obstacles = [], lastScoreNotice = -1;
+  let bufferedLandingJump = false;
+  const JUMP_BUFFER_SECONDS = 3 / 60;
   let isMobile = window.matchMedia("(max-width: 650px)").matches;
   let powerPuffs = [], powerPuffSpawnIn = 7 + Math.random() * 4, immunityRemaining = 0;
   const setState = (next) => { state = next; render(); callbacks.onStatusChange?.(next); };
@@ -35,6 +37,7 @@ export function createGame(canvas, callbacks = {}) {
   function reset() {
     elapsed = 0; score = 0; speed = GAME.initialSpeed; spawnIn = .9;
     player = createPlayer(); obstacles = []; powerPuffs = [];
+    bufferedLandingJump = false;
     powerPuffSpawnIn = 7 + Math.random() * 4; immunityRemaining = 0;
     previousTime = 0; lastScoreNotice = -1; callbacks.onScoreChange?.(0);
   }
@@ -53,7 +56,22 @@ export function createGame(canvas, callbacks = {}) {
   function jump() {
     if (state === "ready") { start(); jumpPlayer(player); return; }
     if (state === "over") { restart(); return; }
-    if (state === "playing") jumpPlayer(player);
+    if (state === "playing") {
+      if (jumpPlayer(player)) return;
+
+      // Buffer a jump only when the runner is descending and within ~3 frames
+      // of landing, so a slightly early blink triggers immediately on touchdown.
+      if (!player.grounded && player.vy > 0) {
+        const floor = GAME.groundY - player.height;
+        const distanceToFloor = Math.max(0, floor - player.y);
+        const timeToLanding = (-player.vy + Math.sqrt(
+          player.vy * player.vy + 2 * GAME.gravity * distanceToFloor
+        )) / GAME.gravity;
+        if (timeToLanding >= 0 && timeToLanding <= JUMP_BUFFER_SECONDS) {
+          bufferedLandingJump = true;
+        }
+      }
+    }
   }
 
   function togglePause() {
@@ -127,6 +145,10 @@ export function createGame(canvas, callbacks = {}) {
       const mobileSpeedMultiplier = isMobile ? 1.22 : 1;
       speed = baseSpeed * mobileSpeedMultiplier;
       updatePlayer(player, dt, true);
+      if (player.grounded && bufferedLandingJump) {
+        bufferedLandingJump = false;
+        jumpPlayer(player);
+      }
       obstacles = updateObstacles(obstacles, dt, speed);
 
       powerPuffSpawnIn -= dt;
