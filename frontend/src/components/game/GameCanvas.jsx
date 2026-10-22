@@ -15,6 +15,8 @@ export default function GameCanvas({ onRegisterBlinkHandler }) {
   const [score, setScore] = useState(0);
   const [best, setBest] = useState(readBest);
   const [muted, setMuted] = useState(true);
+  const gameOverBlinkCountRef = useRef(0);
+  const lastGameOverBlinkAtRef = useRef(0);
 
   const handleStatus = useCallback((next) => setStatus(next), []);
   const handleScore = useCallback((next) => {
@@ -40,7 +42,27 @@ export default function GameCanvas({ onRegisterBlinkHandler }) {
   const togglePause = () => gameRef.current?.togglePause();
   const restart = () => gameRef.current?.restart();
   const handleBlink = useCallback(() => {
-    if (status === "ready" || status === "playing") gameRef.current?.jump();
+    if (status === "ready" || status === "playing") {
+      gameOverBlinkCountRef.current = 0;
+      gameRef.current?.jump();
+      return;
+    }
+
+    if (status === "over") {
+      const now = performance.now();
+      // Three separate blinks within 1.8 seconds count as a restart gesture.
+      if (now - lastGameOverBlinkAtRef.current > 1800) {
+        gameOverBlinkCountRef.current = 0;
+      }
+      lastGameOverBlinkAtRef.current = now;
+      gameOverBlinkCountRef.current += 1;
+
+      if (gameOverBlinkCountRef.current >= 3) {
+        gameOverBlinkCountRef.current = 0;
+        lastGameOverBlinkAtRef.current = 0;
+        gameRef.current?.restart();
+      }
+    }
   }, [status]);
 
   useEffect(() => {
