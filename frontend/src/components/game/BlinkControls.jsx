@@ -124,6 +124,7 @@ export default function BlinkControls({ onBlink }) {
               `Worker init failed at ${message.stage || "unknown stage"}: ${message.message || "Unknown MediaPipe error"}`
             );
             setStatus("error");
+            setEnabled(false);
             stopCamera();
           }
         };
@@ -189,6 +190,7 @@ export default function BlinkControls({ onBlink }) {
               : err.message || "Could not start blink control."
           );
           setStatus("error");
+          setEnabled(false);
           stopCamera();
         }
       }
