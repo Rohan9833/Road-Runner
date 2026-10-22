@@ -58,15 +58,8 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
     ctx.fillRect(sunX - 8, sunY - 10, 14, 4);
   }
 
-  const hillOffset = (elapsed * speed * 0.11) % 230;
-  const hillBaseY = groundY - 92;
-  ctx.fillStyle = hillColor;
-  for (let i = -1; i < 6; i++) {
-    const x = i * 230 - hillOffset;
-    ctx.fillRect(x, hillBaseY + 23, 92, 28);
-    ctx.fillRect(x + 22, hillBaseY, 106, 46);
-    ctx.fillRect(x + 61, hillBaseY + 18, 88, 29);
-  }
+  // Removed the repeating dark cloud-like hill silhouettes near the horizon.
+  // Keep the horizon clean so the sky transitions directly into the ground.
 
   // Sparse, varied cloud silhouettes stay in the upper sky instead of forming a repeating row.
   const cloudTravel = elapsed * 10;
