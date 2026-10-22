@@ -1,6 +1,6 @@
 import { GAME } from "./constants.js";
 export function createObstacle(x, variant = Math.floor(Math.random() * 3)) {
-  const sizes = [{ width: 24, height: 33 }, { width: 35, height: 43 }, { width: 45, height: 27 }];
+  const sizes = [{ width: 29, height: 33 }, { width: 42, height: 43 }, { width: 54, height: 27 }];
   const size = sizes[variant] || sizes[0];
   return { x, y: GAME.groundY - size.height, ...size, variant };
 }
