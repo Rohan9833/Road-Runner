@@ -112,7 +112,7 @@ export default function BlinkControls({ onBlink }) {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
           if (message?.type !== "FRAME_DONE") {
-            console.info("[BlinkControls] Worker message", message);
+            // console.info("[BlinkControls] Worker message", message);
           }
           if (message?.type === "READY") {
             workerReadyRef.current = true;
@@ -136,13 +136,13 @@ export default function BlinkControls({ onBlink }) {
           }
         };
         worker.onerror = (event) => {
-          console.error("[BlinkControls] Worker runtime error", {
-            message: event.message,
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno,
-            event,
-          });
+          // console.error("[BlinkControls] Worker runtime error", {
+          //   message: event.message,
+          //   filename: event.filename,
+          //   lineno: event.lineno,
+          //   colno: event.colno,
+          //   event,
+          // });
           if (!cancelled) {
             setError("Background blink detection failed to start. Please try again.");
             setStatus("error");

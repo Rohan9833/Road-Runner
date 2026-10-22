@@ -79,7 +79,7 @@ async function initialize() {
       outputFacialTransformationMatrixes: false,
     });
     stopped = false;
-    console.info("[BlinkWorker] Multi-signal detector ready: blendshapes + EAR");
+    // console.info("[BlinkWorker] Multi-signal detector ready: blendshapes + EAR");
     self.postMessage({ type: "READY", backend: "MediaPipe blendshapes + EAR", calibrationFrames: CALIBRATION_FRAMES });
   } catch (error) {
     console.error("[BlinkWorker] Initialization failed", {
