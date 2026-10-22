@@ -311,7 +311,7 @@ export default function EyeCalibration() {
 
   return (
     <section className="eye-calibration" aria-label="Eye calibration">
-      {!showGame && <>
+      <div className={showGame ? "calibration-setup-ui calibration-setup-ui-hidden" : "calibration-setup-ui"}>
       <div className="eye-calibration-header">
         <div>
           <span className="eye-calibration-eyebrow"><ScanFace size={15} /> PERSONAL EYE CALIBRATION</span>
@@ -360,8 +360,7 @@ export default function EyeCalibration() {
           </div>
         )}
       </div>
-
-      </>}
+      </div>
       {showGame && <div className="calibrated-game-area"><GameCanvas onRegisterBlinkHandler={registerBlinkHandler} /></div>}
     </section>
   );
