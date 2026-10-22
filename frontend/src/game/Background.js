@@ -42,18 +42,19 @@ export function drawBackground(ctx, elapsed, speed, score = 0) {
   }
 
   const hillOffset = (elapsed * speed * 0.11) % 230;
+  const hillBaseY = groundY - 92;
   ctx.fillStyle = hillColor;
   for (let i = -1; i < 6; i++) {
     const x = i * 230 - hillOffset;
-    ctx.fillRect(x, 207, 92, 28);
-    ctx.fillRect(x + 22, 184, 106, 46);
-    ctx.fillRect(x + 61, 202, 88, 29);
+    ctx.fillRect(x, hillBaseY + 23, 92, 28);
+    ctx.fillRect(x + 22, hillBaseY, 106, 46);
+    ctx.fillRect(x + 61, hillBaseY + 18, 88, 29);
   }
 
   ctx.fillStyle = cloudColor;
   for (let i = 0; i < 3; i++) {
     const x = ((i * 355 - elapsed * 13) % (width + 130) + width + 130) % (width + 130) - 65;
-    const y = 62 + i * 38;
+    const y = 78 + i * 48;
     if (!isNight) {
       ctx.fillRect(x, y, 58, 10);
       ctx.fillRect(x + 13, y - 9, 32, 10);
