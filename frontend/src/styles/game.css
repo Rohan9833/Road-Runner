@@ -381,3 +381,90 @@ kbd { display:inline-flex; align-items:center; justify-content:center; min-width
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
 }
+
+
+/* Test 3: immersive full-page runner layout */
+.play-page {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 10px 14px 6px;
+}
+.game-shell {
+  width: min(1280px, 100%);
+  margin: auto;
+}
+.canvas-wrap {
+  height: clamp(360px, calc(100svh - 220px), 680px);
+  min-height: 360px;
+  max-height: none;
+  aspect-ratio: auto;
+}
+.game-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.camera-enable-button {
+  position: absolute;
+  z-index: 7;
+  top: 16px;
+  right: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 13px;
+  border: 1px solid rgba(255, 250, 240, .8);
+  border-radius: 3px;
+  color: #293c30;
+  background: rgba(255, 250, 240, .94);
+  box-shadow: 3px 3px 0 rgba(41, 60, 48, .18);
+  font-family: var(--mono);
+  font-size: 10px;
+  cursor: pointer;
+  transition: transform .15s ease, background .15s ease;
+}
+.camera-enable-button:hover {
+  background: #fffaf0;
+  transform: translateY(-1px);
+}
+.camera-enable-button:focus-visible {
+  outline: 3px solid #df754a;
+  outline-offset: 3px;
+}
+.play-footer {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+@media (max-width: 650px) {
+  .play-page {
+    min-height: 100svh;
+    padding: 8px 8px 5px;
+  }
+  .game-shell {
+    width: 100%;
+  }
+  .canvas-wrap {
+    height: clamp(360px, calc(100svh - 185px), 700px);
+    min-height: 360px;
+    max-height: none;
+    aspect-ratio: auto;
+  }
+  .game-canvas {
+    min-height: 0;
+  }
+  .camera-enable-button {
+    top: 10px;
+    right: 10px;
+    min-height: 36px;
+    padding: 0 10px;
+    font-size: 9px;
+  }
+  .play-footer {
+    margin-top: 8px;
+    gap: 5px;
+  }
+}
