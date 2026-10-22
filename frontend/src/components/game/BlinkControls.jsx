@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
 
 // Camera sampling stays lightweight; MediaPipe inference runs in the worker.
-const DETECTION_INTERVAL_MS = 90;
+const DETECTION_INTERVAL_MS = 45;
 
 export default function BlinkControls({ onBlink }) {
   const videoRef = useRef(null);
@@ -98,8 +98,8 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = "/blinkDetection.worker.js";
-        console.info("[BlinkControls] Creating classic MediaPipe worker", {
+        const workerUrl = "/blinkDetection.worker.js?v=multisignal-fast-20261021-2";
+        console.info("[BlinkControls] Creating multi-signal MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
           wasmUrl: "/mediapipe/wasm",
@@ -112,7 +112,7 @@ export default function BlinkControls({ onBlink }) {
           if (cancelled || workerRef.current !== worker) return;
           const message = event.data;
           if (message?.type !== "FRAME_DONE") {
-            console.info("[BlinkControls] Worker message", message);
+            // console.info("[BlinkControls] Worker message", message);
           }
           if (message?.type === "READY") {
             workerReadyRef.current = true;
@@ -136,13 +136,13 @@ export default function BlinkControls({ onBlink }) {
           }
         };
         worker.onerror = (event) => {
-          console.error("[BlinkControls] Worker runtime error", {
-            message: event.message,
-            filename: event.filename,
-            lineno: event.lineno,
-            colno: event.colno,
-            event,
-          });
+          // console.error("[BlinkControls] Worker runtime error", {
+          //   message: event.message,
+          //   filename: event.filename,
+          //   lineno: event.lineno,
+          //   colno: event.colno,
+          //   event,
+          // });
           if (!cancelled) {
             setError("Background blink detection failed to start. Please try again.");
             setStatus("error");

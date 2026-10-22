@@ -8,6 +8,8 @@ const POWER_PUFF_URL = "/febutaz.png";
 const POWER_PUFF_WIDTH = 100;
 const POWER_PUFF_HEIGHT = 50;
 const IMMUNITY_SECONDS = 10;
+// Queue a blink that arrives shortly before landing, then jump on the first grounded frame.
+const JUMP_BUFFER_SECONDS = 0.12;
 
 export function createGame(canvas, callbacks = {}) {
   const ctx = canvas.getContext("2d", { alpha: false });
@@ -17,6 +19,7 @@ export function createGame(canvas, callbacks = {}) {
 
   let frame = 0, previousTime = 0, elapsed = 0, score = 0, speed = GAME.initialSpeed, spawnIn = 1.05;
   let state = "ready", destroyed = false, player = createPlayer(), obstacles = [], lastScoreNotice = -1;
+  let bufferedJump = false;
   let isMobile = window.matchMedia("(max-width: 650px)").matches;
   let powerPuffs = [], powerPuffSpawnIn = 7 + Math.random() * 4, immunityRemaining = 0;
   const setState = (next) => { state = next; render(); callbacks.onStatusChange?.(next); };
@@ -34,7 +37,7 @@ export function createGame(canvas, callbacks = {}) {
 
   function reset() {
     elapsed = 0; score = 0; speed = GAME.initialSpeed; spawnIn = .9;
-    player = createPlayer(); obstacles = []; powerPuffs = [];
+    player = createPlayer(); obstacles = []; powerPuffs = []; bufferedJump = false;
     powerPuffSpawnIn = 7 + Math.random() * 4; immunityRemaining = 0;
     previousTime = 0; lastScoreNotice = -1; callbacks.onScoreChange?.(0);
   }
@@ -53,7 +56,23 @@ export function createGame(canvas, callbacks = {}) {
   function jump() {
     if (state === "ready") { start(); jumpPlayer(player); return; }
     if (state === "over") { restart(); return; }
-    if (state === "playing") jumpPlayer(player);
+    if (state !== "playing") return;
+
+    // Jump immediately when grounded. If the blink arrives just before landing,
+    // buffer it so the next jump starts on the first frame the player touches down.
+    if (jumpPlayer(player)) {
+      bufferedJump = false;
+      return;
+    }
+
+    const floor = GAME.groundY - player.height;
+    const distanceToFloor = Math.max(0, floor - player.y);
+    const landingDiscriminant = player.vy * player.vy + 2 * GAME.gravity * distanceToFloor;
+    const timeToLanding = (-player.vy + Math.sqrt(landingDiscriminant)) / GAME.gravity;
+
+    if (player.vy > 0 && timeToLanding <= JUMP_BUFFER_SECONDS) {
+      bufferedJump = true;
+    }
   }
 
   function togglePause() {
@@ -127,6 +146,10 @@ export function createGame(canvas, callbacks = {}) {
       const mobileSpeedMultiplier = isMobile ? 1.22 : 1;
       speed = baseSpeed * mobileSpeedMultiplier;
       updatePlayer(player, dt, true);
+      if (bufferedJump && player.grounded) {
+        bufferedJump = false;
+        jumpPlayer(player);
+      }
       obstacles = updateObstacles(obstacles, dt, speed);
 
       powerPuffSpawnIn -= dt;
