@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
 import { createGame } from "../../game/GameEngine.js";
-import BlinkControls from "./BlinkControls.jsx";
 
 const BEST_KEY = "road-runner-best-v1";
 function readBest() {
@@ -9,7 +8,7 @@ function readBest() {
   catch { return 0; }
 }
 
-export default function GameCanvas() {
+export default function GameCanvas({ onRegisterBlinkHandler }) {
   const canvasRef = useRef(null);
   const gameRef = useRef(null);
   const [status, setStatus] = useState("ready");
@@ -44,6 +43,11 @@ export default function GameCanvas() {
     if (status === "ready" || status === "playing") gameRef.current?.jump();
   }, [status]);
 
+  useEffect(() => {
+    onRegisterBlinkHandler?.(handleBlink);
+    return () => onRegisterBlinkHandler?.(null);
+  }, [handleBlink, onRegisterBlinkHandler]);
+
   return <section className="game-shell" aria-label="Road Runner game">
     <div className="game-topbar">
       <div className="game-status"><span className={`status-dot ${status === "playing" ? "status-dot-live" : ""}`} />{status === "playing" ? "RUN IN PROGRESS" : status === "paused" ? "PAUSED" : status === "over" ? "RUN ENDED" : "READY WHEN YOU ARE"}</div>
@@ -61,7 +65,6 @@ export default function GameCanvas() {
         {status === "ready" && <span className="overlay-hint">PRESS SPACE OR TAP TO JUMP</span>}
       </div></div>}
     </div>
-    <BlinkControls onBlink={handleBlink} gameStatus={status} />
     <div className="game-controls">
       <div className="controls-copy"><span className="controls-label">CONTROLS</span><span><kbd>SPACE</kbd> / <kbd>↑</kbd> jump <span className="control-divider">·</span> <kbd>ESC</kbd> pause</span></div>
       <div className="control-buttons">
