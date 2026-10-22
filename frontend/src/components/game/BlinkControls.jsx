@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, CameraOff, Eye, EyeOff, LoaderCircle } from "lucide-react";
+import { Camera } from "lucide-react";
 
 // Camera sampling stays lightweight; MediaPipe inference runs in the worker.
 const DETECTION_INTERVAL_MS = 45;
@@ -18,22 +18,14 @@ export default function BlinkControls({ onBlink }) {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [loadingStage, setLoadingStage] = useState("Waiting for camera…");
-  const [blinkCount, setBlinkCount] = useState(0);
-  const [blinkPulse, setBlinkPulse] = useState(false);
-  const [blinkNotice, setBlinkNotice] = useState("");
 
   useEffect(() => {
     onBlinkRef.current = onBlink;
   }, [onBlink]);
 
-  // Show a small confirmation and notify the game to jump.
+  // A detected blink triggers a jump without showing any detection UI.
   const reportBlink = () => {
-    setBlinkCount((count) => count + 1);
-    setBlinkNotice("Blink detected");
-    setBlinkPulse(true);
     onBlinkRef.current?.();
-    window.setTimeout(() => setBlinkPulse(false), 350);
-    window.setTimeout(() => setBlinkNotice(""), 1400);
   };
 
   useEffect(() => {
@@ -219,42 +211,22 @@ export default function BlinkControls({ onBlink }) {
     }
   };
 
-  const statusLabel = status === "loading"
-    ? "CONNECTING CAMERA"
-    : status === "ready"
-      ? "BLINK DETECTION ACTIVE"
-      : status === "error" ? "CAMERA NEEDS ATTENTION" : "HANDS-FREE MODE";
-
   return (
-    <aside className={`blink-widget ${enabled ? "blink-widget-enabled" : ""} ${blinkPulse ? "blink-widget-pulse" : ""}`} aria-label="Blink controls">
-      <div className="blink-widget-heading">
-        <span className="blink-live-dot" />
-        <span>BLINK CONTROL</span>
-        <span className="blink-widget-count">{blinkCount} BLINKS</span>
-      </div>
-      {/* Keep the video playing for detection, but do not render a camera preview. */}
+    <>
+      {/* Keep the camera stream mounted for detection, but never show its preview. */}
       <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
-      {enabled && status === "loading" && (
-        <div className="blink-event-status"><LoaderCircle size={12} className="blink-spinner" /> {loadingStage}</div>
-      )}
-      {enabled && status === "error" && (
-        <div className="blink-event-status blink-camera-error"><CameraOff size={12} /> {error}</div>
-      )}
-      {enabled && status === "ready" && (
-        <div className="blink-event-status">
-          <span className="blink-status-dot" /> Detection active
-          {blinkNotice && <strong className="blink-detected-notice"><Eye size={12} /> {blinkNotice}</strong>}
-        </div>
-      )}
-      <div className="blink-widget-footer">
-        <div className="blink-widget-copy">
-          <strong>{statusLabel}</strong>
-          <span>{status === "error" ? "Check camera permissions" : enabled ? "Blink to jump" : "Detect blinks without preview"}</span>
-        </div>
-        <button type="button" className={`blink-toggle ${enabled ? "blink-toggle-on" : ""}`} onClick={toggleEnabled}>
-          {enabled ? <><EyeOff size={14} /> Turn off</> : <><Camera size={14} /> Enable</>}
+      {!enabled && (
+        <button
+          type="button"
+          className="camera-enable-button"
+          onClick={toggleEnabled}
+          aria-label="Enable camera for blink-to-jump"
+          title={error || "Enable camera to jump by blinking"}
+        >
+          <Camera size={15} />
+          <span>Enable camera</span>
         </button>
-      </div>
-    </aside>
+      )}
+    </>
   );
 }
