@@ -1,52 +1,32 @@
-/* Classic Web Worker: MediaPipe blendshapes + facial-landmark EAR fusion. */
+/* Pupil-visibility blink detector for Road Runner.
+ * MediaPipe supplies eye/iris landmarks; blink events are based on image pixels,
+ * not EAR or eye-blendshape scores. Both pupils must disappear briefly.
+ */
 const WASM_URL = "/mediapipe/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-const CALIBRATION_FRAMES = 36;
-const BLEND_CLOSED = 0.42;
-const BLEND_OPEN = 0.24;
-const MIN_CLOSED_MS = 35;
-const MAX_CLOSED_MS = 750;
-const COOLDOWN_MS = 300;
-const EAR_CLOSED_RATIO = 0.72;
-const EAR_ABSOLUTE_FLOOR = 0.105;
-const REQUIRED_CLOSED_FRAMES = 1;
+const REQUIRED_MISSING_FRAMES = 2;
+const MIN_BLINK_GAP_MS = 260;
+const MAX_MISSING_MS = 700;
+const DARK_PIXEL_THRESHOLD = 85;
+const MIN_CENTER_DARK_RATIO = 0.08;
+const MIN_LOCAL_CONTRAST = 12;
 
 let detector = null;
 let initializing = false;
 let stopped = false;
-let previousLeft = 0;
-let previousRight = 0;
-let lastBlinkAt = 0;
-let closedSince = 0;
-let closedFrames = 0;
-let wasOpen = false;
-let calibrationSamples = [];
-let baselineEar = null;
 let frameCount = 0;
+let pupilsWereVisible = false;
+let missingFrames = 0;
+let missingSince = 0;
+let lastBlinkAt = -Infinity;
 
-self.postMessage({ type: "WORKER_LOADED", detector: "MediaPipe blendshapes + EAR" });
+self.postMessage({ type: "WORKER_LOADED", detector: "pupil visibility" });
 
 function distance(a, b) {
   if (!a || !b) return 0;
   return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function eyeAspectRatio(points, indexes) {
-  const [left, upperA, upperB, right, lowerA, lowerB] = indexes.map((i) => points[i]);
-  const horizontal = distance(left, right);
-  if (horizontal < 1e-6) return null;
-  return (distance(upperA, lowerB) + distance(upperB, lowerA)) / (2 * horizontal);
-}
-
-function getEAR(points) {
-  if (!points || points.length < 468) return null;
-  // Standard MediaPipe Face Mesh eye contour landmarks.
-  const left = eyeAspectRatio(points, [33, 160, 158, 133, 153, 144]);
-  const right = eyeAspectRatio(points, [362, 385, 387, 263, 373, 380]);
-  if (left == null || right == null) return null;
-  return { left, right, mean: (left + right) / 2 };
 }
 
 async function initialize() {
@@ -63,31 +43,29 @@ async function initialize() {
     }
 
     stage = "download face model";
-    const modelResponse = await fetch(MODEL_URL);
-    if (!modelResponse.ok) throw new Error(`Could not download face model (HTTP ${modelResponse.status}).`);
-    const modelBuffer = new Uint8Array(await modelResponse.arrayBuffer());
+    const response = await fetch(MODEL_URL);
+    if (!response.ok) throw new Error(`Could not download face model (HTTP ${response.status}).`);
+    const modelBuffer = new Uint8Array(await response.arrayBuffer());
 
     stage = "resolve local WASM runtime";
-    const visionFiles = await api.FilesetResolver.forVisionTasks(WASM_URL);
+    const files = await api.FilesetResolver.forVisionTasks(WASM_URL);
 
     stage = "create FaceLandmarker";
-    detector = await api.FaceLandmarker.createFromOptions(visionFiles, {
+    detector = await api.FaceLandmarker.createFromOptions(files, {
       baseOptions: { modelAssetBuffer: modelBuffer, delegate: "CPU" },
       runningMode: "VIDEO",
       numFaces: 1,
-      outputFaceBlendshapes: true,
+      outputFaceBlendshapes: false,
       outputFacialTransformationMatrixes: false,
     });
     stopped = false;
-    // console.info("[BlinkWorker] Multi-signal detector ready: blendshapes + EAR");
-    self.postMessage({ type: "READY", backend: "MediaPipe blendshapes + EAR", calibrationFrames: CALIBRATION_FRAMES });
+    self.postMessage({ type: "READY", backend: "pupil visibility" });
   } catch (error) {
-    console.error("[BlinkWorker] Initialization failed", {
-      stage, name: error?.name, message: error?.message, stack: error?.stack,
-    });
     self.postMessage({
-      type: "ERROR", stage, name: error?.name || "Error",
-      message: error?.message || "Could not initialize MediaPipe in the worker.",
+      type: "ERROR",
+      stage,
+      name: error?.name || "Error",
+      message: error?.message || "Could not initialize MediaPipe.",
       stack: error?.stack || "",
     });
   } finally {
@@ -95,95 +73,138 @@ async function initialize() {
   }
 }
 
+function grayAt(data, width, x, y) {
+  const px = Math.max(0, Math.min(width - 1, Math.round(x)));
+  const py = Math.max(0, Math.min(data.length / 4 / width - 1, Math.round(y)));
+  const index = (py * width + px) * 4;
+  return (data[index] * 0.299) + (data[index + 1] * 0.587) + (data[index + 2] * 0.114);
+}
+
+// Check for a dark pupil-like center relative to the surrounding iris area.
+// Eye and iris landmarks locate the search patch; pixel contrast decides visibility.
+function pupilVisible(imageData, width, height, landmarks, centerIndex, eyeLeftIndex, eyeRightIndex) {
+  const center = landmarks[centerIndex];
+  const eyeLeft = landmarks[eyeLeftIndex];
+  const eyeRight = landmarks[eyeRightIndex];
+  if (!center || !eyeLeft || !eyeRight) return false;
+
+  const eyeWidthPx = distance(eyeLeft, eyeRight) * width;
+  if (eyeWidthPx < 8) return false;
+
+  const cx = center.x * width;
+  const cy = center.y * height;
+  const radius = Math.max(1.5, Math.min(eyeWidthPx * 0.075, 5));
+  const outerRadius = radius * 2.1;
+  let centerDark = 0, centerCount = 0, ringSum = 0, ringCount = 0;
+
+  const minX = Math.max(0, Math.floor(cx - outerRadius));
+  const maxX = Math.min(width - 1, Math.ceil(cx + outerRadius));
+  const minY = Math.max(0, Math.floor(cy - outerRadius));
+  const maxY = Math.min(height - 1, Math.ceil(cy + outerRadius));
+
+  for (let y = minY; y <= maxY; y += 1) {
+    for (let x = minX; x <= maxX; x += 1) {
+      const d = Math.hypot(x - cx, y - cy);
+      const gray = grayAt(imageData.data, width, x, y);
+      if (d <= radius) {
+        centerCount += 1;
+        if (gray <= DARK_PIXEL_THRESHOLD) centerDark += 1;
+      } else if (d >= radius * 1.35 && d <= outerRadius) {
+        ringSum += gray;
+        ringCount += 1;
+      }
+    }
+  }
+
+  if (!centerCount || !ringCount) return false;
+  const centerDarkRatio = centerDark / centerCount;
+  const centerMean = Array.from({ length: 1 }, () => {
+    let sum = 0;
+    for (let y = minY; y <= maxY; y += 1) {
+      for (let x = minX; x <= maxX; x += 1) {
+        if (Math.hypot(x - cx, y - cy) <= radius) sum += grayAt(imageData.data, width, x, y);
+      }
+    }
+    return sum / centerCount;
+  })[0];
+  const ringMean = ringSum / ringCount;
+  return centerDarkRatio >= MIN_CENTER_DARK_RATIO &&
+    ringMean - centerMean >= MIN_LOCAL_CONTRAST;
+}
+
 function processFrame(bitmap, timestamp) {
   try {
     if (!detector || stopped) return;
     frameCount += 1;
     const result = detector.detectForVideo(bitmap, timestamp);
-    const categories = result.faceBlendshapes?.[0]?.categories ?? [];
-    const left = categories.find((item) => item.categoryName === "eyeBlinkLeft")?.score ?? 0;
-    const right = categories.find((item) => item.categoryName === "eyeBlinkRight")?.score ?? 0;
-    const points = result.faceLandmarks?.[0];
-    const ear = getEAR(points);
+    const landmarks = result.faceLandmarks?.[0];
 
-    if (ear && frameCount <= CALIBRATION_FRAMES && left < BLEND_CLOSED && right < BLEND_CLOSED) {
-      calibrationSamples.push(ear.mean);
-      if (calibrationSamples.length > CALIBRATION_FRAMES) calibrationSamples.shift();
-      const sorted = [...calibrationSamples].sort((a, b) => a - b);
-      // Use a robust upper quartile of open-eye samples as the personal baseline.
-      baselineEar = sorted.length ? sorted[Math.floor((sorted.length - 1) * 0.75)] : null;
+    if (!landmarks || landmarks.length < 478) {
+      pupilsWereVisible = false;
+      missingFrames = 0;
+      missingSince = 0;
+      self.postMessage({ type: "METRICS", face: false, leftPupil: false, rightPupil: false, frame: frameCount });
+      return;
     }
 
-    const earClosed = ear && baselineEar != null
-      ? ear.mean < Math.max(EAR_ABSOLUTE_FLOOR, baselineEar * EAR_CLOSED_RATIO)
-      : false;
-    const blendClosed = left >= BLEND_CLOSED || right >= BLEND_CLOSED;
-    const blendOpen = left <= BLEND_OPEN && right <= BLEND_OPEN;
-    const earOpen = ear && baselineEar != null
-      ? ear.mean >= baselineEar * 0.84
-      : false;
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    const imageData = context.getImageData(0, 0, bitmap.width, bitmap.height);
 
-    // Fuse independent cues. Blendshapes can catch closure under glasses;
-    // EAR can catch blinks when blendshape scores are weak. A single-eye
-    // signal is accepted only when the other signal supports closure.
-    const closureEvidence = blendClosed || earClosed;
-    const reopeningEvidence = blendOpen || earOpen;
-    const openEvidence = blendOpen || earOpen;
+    // MediaPipe iris centers: 468 (subject's right eye) and 473 (subject's left eye).
+    // Eye corners: 33–133 and 362–263.
+    const leftPupil = pupilVisible(imageData, bitmap.width, bitmap.height, landmarks, 468, 33, 133);
+    const rightPupil = pupilVisible(imageData, bitmap.width, bitmap.height, landmarks, 473, 362, 263);
+    const bothVisible = leftPupil && rightPupil;
+    const bothMissing = !leftPupil && !rightPupil;
 
-    if (openEvidence) wasOpen = true;
+    if (bothVisible) {
+      pupilsWereVisible = true;
+      missingFrames = 0;
+      missingSince = 0;
+    } else if (pupilsWereVisible && bothMissing) {
+      missingFrames += 1;
+      if (!missingSince) missingSince = timestamp;
 
-    if (wasOpen && closureEvidence) {
-      closedFrames += 1;
-      if (!closedSince && closedFrames >= REQUIRED_CLOSED_FRAMES) {
-        // Trigger on closure onset rather than waiting for reopening. This
-        // removes the largest source of perceived input delay.
-        closedSince = timestamp;
-        if (timestamp - lastBlinkAt >= COOLDOWN_MS) {
-          lastBlinkAt = timestamp;
-          console.info("[BlinkWorker] BLINK_DETECTED (closure onset)", {
-            blendLeft: Number(left.toFixed(3)),
-            blendRight: Number(right.toFixed(3)),
-            ear: ear ? Number(ear.mean.toFixed(3)) : null,
-            baselineEar: baselineEar == null ? null : Number(baselineEar.toFixed(3)),
-            frame: frameCount,
-          });
-          self.postMessage({
-            type: "BLINK_DETECTED",
-            confidence: blendClosed && earClosed ? 0.95 : 0.78,
-            signals: { blendshape: blendClosed, ear: Boolean(earClosed) },
-          });
-        }
+      const missingDuration = timestamp - missingSince;
+      if (
+        missingFrames >= REQUIRED_MISSING_FRAMES &&
+        missingDuration <= MAX_MISSING_MS &&
+        timestamp - lastBlinkAt >= MIN_BLINK_GAP_MS
+      ) {
+        lastBlinkAt = timestamp;
+        pupilsWereVisible = false;
+        self.postMessage({
+          type: "BLINK_DETECTED",
+          method: "pupil-disappearance",
+          missingFrames,
+          missingDuration,
+          confidence: 0.8,
+        });
+      } else if (missingDuration > MAX_MISSING_MS) {
+        // Do not repeatedly report a long eye occlusion as multiple blinks.
+        pupilsWereVisible = false;
+        missingFrames = 0;
+        missingSince = 0;
       }
-    } else if (closedSince && reopeningEvidence) {
-      closedSince = 0;
-      closedFrames = 0;
-      wasOpen = true;
-    } else if (closedSince && timestamp - closedSince > MAX_CLOSED_MS) {
-      closedSince = 0;
-      closedFrames = 0;
-      wasOpen = false;
+    } else if (!bothMissing) {
+      // If one pupil remains visible, treat it as partial occlusion/reflection,
+      // not a confirmed blink.
+      missingFrames = 0;
+      missingSince = 0;
     }
-
-    previousLeft = left;
-    previousRight = right;
 
     self.postMessage({
       type: "METRICS",
-      face: Boolean(points),
-      blendLeft: left,
-      blendRight: right,
-      ear: ear?.mean ?? null,
-      baselineEar,
-      earClosed: Boolean(earClosed),
-      blendClosed,
-      calibration: calibrationSamples.length,
-      calibrationTotal: CALIBRATION_FRAMES,
+      face: true,
+      leftPupil,
+      rightPupil,
+      bothPupilsVisible: bothVisible,
+      missingFrames,
       frame: frameCount,
     });
   } catch (error) {
-    console.error("[BlinkWorker] Frame inference failed", {
-      name: error?.name, message: error?.message, stack: error?.stack,
-    });
     self.postMessage({ type: "FRAME_ERROR", message: error?.message || "Frame processing failed." });
   } finally {
     bitmap?.close?.();
@@ -202,15 +223,11 @@ self.onmessage = async (event) => {
     return;
   }
   if (data?.type === "RESET") {
-    previousLeft = 0;
-    previousRight = 0;
-    lastBlinkAt = 0;
-    closedSince = 0;
-    closedFrames = 0;
-    wasOpen = false;
-    calibrationSamples = [];
-    baselineEar = null;
     frameCount = 0;
+    pupilsWereVisible = false;
+    missingFrames = 0;
+    missingSince = 0;
+    lastBlinkAt = -Infinity;
     return;
   }
   if (data?.type === "STOP") {
