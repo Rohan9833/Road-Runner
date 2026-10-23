@@ -78,7 +78,7 @@ export default function BlinkControls({ onBlink }) {
         await video.play();
         if (cancelled) return;
 
-        setLoadingStage("Starting pupil-visibility detection…");
+        setLoadingStage("Starting adaptive blink detection…");
         console.info("[BlinkControls] Camera stream ready", {
           width: video.videoWidth,
           height: video.videoHeight,
@@ -90,8 +90,8 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = "/blinkDetection.worker.js?v=pupil-visibility-20261023-1";
-        console.info("[BlinkControls] Creating pupil-visibility MediaPipe worker", {
+        const workerUrl = "/blinkDetection.worker.js?v=adaptive-blink-20261023-2";
+        console.info("[BlinkControls] Creating adaptive multi-signal MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
           wasmUrl: "/mediapipe/wasm",
@@ -222,8 +222,8 @@ export default function BlinkControls({ onBlink }) {
           type="button"
           className="camera-enable-button"
           onClick={toggleEnabled}
-          aria-label="Enable camera for pupil-disappearance jump"
-          title={error || "Enable camera to jump when both pupils disappear"}
+          aria-label="Enable camera for blink-controlled jump"
+          title={error || "Enable camera to jump when you blink"}
         >
           <Camera size={15} />
           <span>Enable camera</span>
