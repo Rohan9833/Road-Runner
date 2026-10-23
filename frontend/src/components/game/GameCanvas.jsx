@@ -50,7 +50,7 @@ export default function GameCanvas() {
       <div className="game-stats"><div className="stat"><span>THIS RUN</span><strong>{String(score).padStart(5, "0")}</strong></div><div className="stat"><span>BEST RUN</span><strong>{String(best).padStart(5, "0")}</strong></div></div>
     </div>
     <div className="canvas-wrap">
-      <canvas ref={canvasRef} className="game-canvas" aria-label="Road Runner play area. Press space or arrow up to jump, or enable pupil control." tabIndex={0} onPointerDown={() => { if (status === "playing") jump(); }} />
+      <canvas ref={canvasRef} className="game-canvas" aria-label="Road Runner play area. Press space or arrow up to jump, or enable blink control." tabIndex={0} onPointerDown={() => { if (status === "playing") jump(); }} />
       <BlinkControls onBlink={handleBlink} gameStatus={status} />
       {status !== "playing" && <div className="game-overlay"><div className="overlay-card">
         <span className="overlay-kicker">{status === "over" ? "THAT'S A WRAP" : status === "paused" ? "TAKE YOUR TIME" : "READY, RUNNER?"}</span>
