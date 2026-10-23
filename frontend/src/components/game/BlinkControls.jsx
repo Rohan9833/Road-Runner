@@ -225,7 +225,6 @@ export default function BlinkControls({ onBlink }) {
           </span>
         </div>
       )}
-      {!enabled && <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
       {!enabled && (
         <button
           type="button"
