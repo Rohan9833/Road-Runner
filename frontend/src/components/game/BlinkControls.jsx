@@ -215,8 +215,17 @@ export default function BlinkControls({ onBlink }) {
 
   return (
     <>
-      {/* Keep the camera stream mounted for detection, but never show its preview. */}
-      <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
+      {/* Temporary debug preview: remove this wrapper and its CSS after testing. */}
+      {enabled && (
+        <div className="debug-camera-preview" aria-label="Live camera debugging preview">
+          <video ref={videoRef} className="debug-camera-video" autoPlay muted playsInline />
+          <span className={`debug-camera-label ${status === "ready" ? "debug-camera-label-live" : ""}`}>
+            <span className="debug-camera-dot" />
+            {status === "ready" ? "CAMERA LIVE" : status === "error" ? "CAMERA ERROR" : "CAMERA STARTING"}
+          </span>
+        </div>
+      )}
+      {!enabled && <video ref={videoRef} className="blink-camera-video-hidden" autoPlay muted playsInline />
       {!enabled && (
         <button
           type="button"
