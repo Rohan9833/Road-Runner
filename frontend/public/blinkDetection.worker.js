@@ -7,11 +7,11 @@ const WASM_URL = "/mediapipe/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
 
-const MIN_BLINK_GAP_MS = 300;
-const REQUIRED_CLOSED_FRAMES = 2;
-const BLENDSHAPE_STRONG = 0.62;
-const BLENDSHAPE_BOTH = 0.42;
-const EAR_CLOSED_RATIO = 0.72;
+const MIN_BLINK_GAP_MS = 350;
+const REQUIRED_CLOSED_FRAMES = 3;
+const BLENDSHAPE_STRONG = 0.72;
+const BLENDSHAPE_BOTH = 0.50;
+const EAR_CLOSED_RATIO = 0.68;
 const MIN_VALID_EAR = 0.08;
 const MAX_VALID_EAR = 0.48;
 const BASELINE_ALPHA_UP = 0.12;
@@ -23,6 +23,7 @@ let stopped = false;
 let frameCount = 0;
 let lastBlinkAt = -Infinity;
 let closedFrames = 0;
+let blinkArmed = true;
 let openEarBaseline = null;
 let lastFaceAt = 0;
 
@@ -121,6 +122,7 @@ function processFrame(bitmap, timestamp) {
 
     if (!landmarks || landmarks.length < 468) {
       closedFrames = 0;
+      blinkArmed = true;
       self.postMessage({ type: "METRICS", face: false, frame: frameCount });
       return;
     }
@@ -151,9 +153,11 @@ function processFrame(bitmap, timestamp) {
       closedFrames += 1;
       if (
         closedFrames >= REQUIRED_CLOSED_FRAMES &&
+        blinkArmed &&
         timestamp - lastBlinkAt >= MIN_BLINK_GAP_MS
       ) {
         lastBlinkAt = timestamp;
+        blinkArmed = false;
         const confidence = blendshapeClosed && earClosed ? 0.96 :
           (blendshapeClosed ? 0.84 : 0.74);
         self.postMessage({
@@ -170,6 +174,7 @@ function processFrame(bitmap, timestamp) {
       }
     } else {
       closedFrames = 0;
+      blinkArmed = true;
     }
 
     self.postMessage({
@@ -207,6 +212,7 @@ self.onmessage = async (event) => {
     frameCount = 0;
     lastBlinkAt = -Infinity;
     closedFrames = 0;
+    blinkArmed = true;
     openEarBaseline = null;
     lastFaceAt = 0;
     return;
