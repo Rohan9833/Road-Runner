@@ -59,7 +59,7 @@ export default function BlinkControls({ onBlink }) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode: "user",
-            // Keep the established camera resolution so blink scores remain reliable.
+            // Use a modest camera resolution for pupil-pixel analysis.
             width: { ideal: isMobile ? 160 : 480 },
             height: { ideal: isMobile ? 120 : 360 },
             frameRate: { ideal: isMobile ? 15 : 24, max: isMobile ? 20 : 30 },
@@ -78,7 +78,7 @@ export default function BlinkControls({ onBlink }) {
         await video.play();
         if (cancelled) return;
 
-        setLoadingStage("Starting background blink detection…");
+        setLoadingStage("Starting pupil-visibility detection…");
         console.info("[BlinkControls] Camera stream ready", {
           width: video.videoWidth,
           height: video.videoHeight,
@@ -90,8 +90,8 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = "/blinkDetection.worker.js?v=multisignal-fast-20261021-2";
-        console.info("[BlinkControls] Creating multi-signal MediaPipe worker", {
+        const workerUrl = "/blinkDetection.worker.js?v=pupil-visibility-20261023-1";
+        console.info("[BlinkControls] Creating pupil-visibility MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
           wasmUrl: "/mediapipe/wasm",
@@ -222,8 +222,8 @@ export default function BlinkControls({ onBlink }) {
           type="button"
           className="camera-enable-button"
           onClick={toggleEnabled}
-          aria-label="Enable camera for blink-to-jump"
-          title={error || "Enable camera to jump by blinking"}
+          aria-label="Enable camera for pupil-disappearance jump"
+          title={error || "Enable camera to jump when both pupils disappear"}
         >
           <Camera size={15} />
           <span>Enable camera</span>
