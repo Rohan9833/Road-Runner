@@ -90,7 +90,7 @@ export default function BlinkControls({ onBlink }) {
             settings: track.getSettings?.(),
           })),
         });
-        const workerUrl = "/blinkDetection.worker.js?v=adaptive-blink-20261023-2";
+        const workerUrl = "/blinkDetection.worker.js?v=adaptive-blink-20261023-3";
         console.info("[BlinkControls] Creating adaptive multi-signal MediaPipe worker", {
           workerUrl,
           mediaPipePackageVersion: "1.1.1",
